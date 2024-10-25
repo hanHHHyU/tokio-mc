@@ -66,6 +66,8 @@ pub(crate) type Word = u16;
 
 pub type Quantity = u16;
 
+pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 6;
+
 // 软元件代码的枚举
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SoftElementCode {
@@ -294,5 +296,72 @@ impl fmt::Display for ExceptionResponse {
 impl error::Error for ExceptionResponse {
     fn description(&self) -> &str {
         self.exception.description()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_function_code() {
+        assert_eq!(
+            FunctionCode::ReadBits,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x01, 0x00][..]))
+                .expect("Failed to create FunctionCode from bytes")
+        );
+        assert_eq!(
+            FunctionCode::ReadWords,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]))
+                .expect("Failed to create FunctionCode from bytes")
+        );
+
+        assert_eq!(
+            FunctionCode::WriteMultipleBits,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]))
+                .expect("Failed to create FunctionCode from bytes")
+        );
+
+        assert_eq!(
+            FunctionCode::WriteMultipleWords,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]))
+                .expect("Failed to create FunctionCode from bytes")
+        );
+    }
+
+    #[test]
+    fn function_code_values() {
+        let read_bits_bytes = BytesMut::from(&[0x01, 0x04, 0x01, 0x00][..]);
+        let read_words_bytes = BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]);
+        let write_multiple_bits_bytes = BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]);
+        let write_multiple_words_bytes = BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]);
+
+        // ReadBits 测试
+        assert_eq!(
+            FunctionCode::ReadBits.value(),
+            read_bits_bytes,
+            "ReadBits byte sequence is incorrect"
+        );
+
+        // ReadWords 测试
+        assert_eq!(
+            FunctionCode::ReadWords.value(),
+            read_words_bytes,
+            "ReadWords byte sequence is incorrect"
+        );
+
+        // WriteMultipleBits 测试
+        assert_eq!(
+            FunctionCode::WriteMultipleBits.value(),
+            write_multiple_bits_bytes,
+            "WriteMultipleBits byte sequence is incorrect"
+        );
+
+        // WriteMultipleWords 测试
+        assert_eq!(
+            FunctionCode::WriteMultipleWords.value(),
+            write_multiple_words_bytes,
+            "WriteMultipleWords byte sequence is incorrect"
+        );
     }
 }
