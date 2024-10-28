@@ -66,7 +66,7 @@ pub(crate) type Word = u16;
 
 pub type Quantity = u16;
 
-pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 6;
+pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
 
 // 软元件代码的枚举
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -128,8 +128,10 @@ impl<'a> Request<'a> {
 pub enum Response {
     ReadBits(Vec<Bit>),
     ReadWords(Vec<Word>),
-    WriteMultipleBits(Address, Quantity, SoftElementCode),
-    WriteMultipleWords(Address, Quantity, SoftElementCode),
+    // WriteMultipleBits(Address, Quantity, SoftElementCode),
+    // WriteMultipleWords(Address, Quantity, SoftElementCode),
+    WriteMultipleBits,
+    WriteMultipleWords,
 }
 
 impl Response {
@@ -140,8 +142,10 @@ impl Response {
         match self {
             ReadBits(_) => FunctionCode::ReadBits,
             ReadWords(_) => FunctionCode::ReadWords,
-            WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
-            WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
+            // WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
+            // WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
+            WriteMultipleBits => FunctionCode::WriteMultipleBits,
+            WriteMultipleWords => FunctionCode::WriteMultipleWords,
         }
     }
 }

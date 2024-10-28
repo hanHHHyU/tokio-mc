@@ -29,8 +29,8 @@ impl RequestHeader {
         &self.0
     }
 
-     /// 获取响应头的字节数组长度
-     pub fn len(&self) -> usize {
+    /// 获取响应头的字节数组长度
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 }
@@ -49,7 +49,9 @@ impl ResponseHeader {
         buf.put_u8(0xFF); // PLC 编号，固定 FF
         buf.put_u16_le(0x03FF); // 目标模块 IO 编号
         buf.put_u16_le(2); // 长度默认
-        buf.put_u16_le(0); // 代码，默认成功 00
+                           // buf.put_u16_le(0); // 代码，默认成功 00
+
+        // D0 00 00 FF FF 03 00
 
         // 将 BytesMut 冻结为不可变的 Bytes
         ResponseHeader(buf.freeze())
@@ -58,5 +60,10 @@ impl ResponseHeader {
     /// 获取响应头的字节数组
     pub fn bytes(&self) -> &[u8] {
         &self.0
+    }
+
+    pub fn matches(&self, bytes: &Bytes) -> bool {
+        let header_bytes = self.bytes();
+        bytes.len() >= header_bytes.len() && bytes.starts_with(header_bytes)
     }
 }

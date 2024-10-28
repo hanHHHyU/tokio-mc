@@ -19,3 +19,6 @@ tokio-serial = { version = "5.4.4", optional = true, default-features = false }
 tokio-util = { version = "0.7.10", optional = true, default-features = false, features = [
     "codec",
 ] }
+
+
+futures-executor = "0.3.30" # 添加 futures-executor

@@ -438,6 +438,7 @@ dependencies = [
  "byteorder",
  "bytes",
  "futures-core",
+ "futures-executor",
  "futures-util",
  "log",
  "smallvec",

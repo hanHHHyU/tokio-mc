@@ -1,84 +1,45 @@
-use async_trait::async_trait;
-use std::{borrow::Cow, fmt::Debug, io};
+// use std::{fmt, io, net::SocketAddr};
 
-use crate::{frame::*, Result};
+// use tokio::{
+//     io::{AsyncRead, AsyncWrite},
+//     net::TcpStream,
+// };
 
-#[async_trait]
-pub trait Client: Send + Debug {
-    /// Invokes a _Modbus_ function.
-    async fn call(&mut self, request: Request<'_>) -> Result<Response>;
+// use super::*;
 
-    /// Disconnects the client.
-    ///
-    /// Permanently disconnects the client by shutting down the
-    /// underlying stream in a graceful manner (`AsyncDrop`).
-    ///
-    /// Dropping the client without explicitly disconnecting it
-    /// beforehand should also work and free all resources. The
-    /// actual behavior might depend on the underlying transport
-    /// protocol (RTU/TCP) that is used by the client.
-    async fn disconnect(&mut self) -> io::Result<()>;
-}
+// /// Establish a direct connection to a Modbus TCP coupler.
+// pub async fn connect(socket_addr: SocketAddr) -> io::Result<Context> {
+//     connect_slave(socket_addr).await
+// }
 
-#[async_trait]
-pub trait Reader: Client {
-    async fn read_bits(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Bit>>;
+// /// Connect to a physical, broadcast, or custom Modbus device,
+// /// probably through a Modbus TCP gateway that is forwarding
+// /// messages to/from the corresponding slave device.
+// pub async fn connect_slave(socket_addr: SocketAddr) -> io::Result<Context> {
+//     let transport = TcpStream::connect(socket_addr).await?;
+//     let context = attach_slave(transport);
+//     Ok(context)
+// }
 
-    async fn read_words(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Word>>;
-}
+// /// Attach a new client context to a direct transport connection.
+// ///
+// /// The connection could either be an ordinary [`TcpStream`] or a TLS connection.
+// pub fn attach<T>(transport: T) -> Context
+// where
+//     T: AsyncRead + AsyncWrite + Send + Unpin + fmt::Debug + 'static,
+// {
+//     attach_slave(transport)
+// }
 
-#[async_trait]
-pub trait Writer: Client {
-    async fn write_multiple_bits(
-        &mut self,
-        addr: Address,
-        bits: &'_ [Bit],
-        code: SoftElementCode,
-    ) -> Result<()>;
-
-    async fn write_multiple_word(
-        &mut self,
-        addr: Address,
-        words: &'_ [Word],
-        code: SoftElementCode,
-    ) -> Result<()>;
-}
-
-/// Asynchronous Modbus client context
-#[derive(Debug)]
-pub struct Context {
-    client: Box<dyn Client>,
-}
-
-impl From<Box<dyn Client>> for Context {
-    fn from(client: Box<dyn Client>) -> Self {
-        Self { client }
-    }
-}
-
-impl From<Context> for Box<dyn Client> {
-    fn from(val: Context) -> Self {
-        val.client
-    }
-}
-
-#[async_trait]
-impl Client for Context {
-    async fn call(&mut self, request: Request<'_>) -> Result<Response> {
-        self.client.call(request).await
-    }
-
-    async fn disconnect(&mut self) -> io::Result<()> {
-        self.client.disconnect().await
-    }
-}
+// /// Attach a new client context to a transport connection.
+// ///
+// /// The connection could either be an ordinary [`TcpStream`] or a TLS connection.
+// pub fn attach_slave<T>(transport: T) -> Context
+// where
+//     T: AsyncRead + AsyncWrite + Send + Unpin + fmt::Debug + 'static,
+// {
+//     let client = crate::service::tcp::Client::new(transport);
+//     Context {
+//         client: Box::new(client),
+//     }
+// }

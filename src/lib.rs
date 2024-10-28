@@ -14,6 +14,8 @@ mod client;
 
 mod header;
 
+// mod service;
+
 /// Specialized [`std::result::Result`] type for type-checked responses of the _Modbus_ client API.
 ///
 /// The payload is generic over the response type.
