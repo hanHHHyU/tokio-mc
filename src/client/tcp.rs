@@ -9,7 +9,16 @@ use tokio::{
 
 use crate::error;
 
-use super::{Client, ExceptionCode, Request, Response};
+use super::{Client, Context, ExceptionCode, Request, Response};
+
+pub async fn connect(socket_addr: SocketAddr) -> io::Result<Context<TcpClient>> {
+    // 等待 TcpClient::new 的 Future 完成，获得 TcpClient 实例
+    let tcp_client = TcpClient::new(socket_addr).await?;
+    let context: Context<TcpClient> = Context::<TcpClient>::new(tcp_client);
+    // 返回 `Ok(context)`，这是标准的 `Result` 类型
+    Ok(context)
+}
+
 #[derive(Debug)]
 pub struct TcpClient {
     stream: TcpStream, // 直接保存 TcpStream 实例
@@ -20,7 +29,7 @@ impl TcpClient {
     pub async fn new(addr: SocketAddr) -> Result<Self, io::Error> {
         let stream = TcpStream::connect(addr).await?;
         println!("Connected to {:?}", addr);
-        Ok(Self {  stream })
+        Ok(Self { stream })
     }
 }
 
@@ -54,6 +63,5 @@ impl Client for TcpClient {
         let response = Response::try_from((response_bytes, request)).unwrap();
 
         Ok(Ok(response))
-
     }
 }
