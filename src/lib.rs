@@ -3,14 +3,14 @@ pub use self::frame::{
 };
 pub use bytes;
 
-mod error;
+pub mod error;
 pub use self::error::{Error, ProtocolError};
 
-mod frame;
+pub mod frame;
 
-mod codec;
+pub mod codec;
 
-mod client;
+pub mod client;
 
 mod header;
 

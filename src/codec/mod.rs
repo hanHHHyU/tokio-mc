@@ -11,23 +11,6 @@ use crate::{
     frame::*,
     header::{RequestHeader, ResponseHeader},
 };
-#[allow(clippy::cast_possible_truncation)]
-fn u16_len(len: usize) -> u16 {
-    // This type conversion should always be safe, because either
-    // the caller is responsible to pass a valid usize or the
-    // possible values are limited by the protocol.
-    debug_assert!(len <= u16::MAX.into());
-    len as u16
-}
-
-#[allow(clippy::cast_possible_truncation)]
-fn u8_len(len: usize) -> u8 {
-    // This type conversion should always be safe, because either
-    // the caller is responsible to pass a valid usize or the
-    // possible values are limited by the protocol.
-    debug_assert!(len <= u8::MAX.into());
-    len as u8
-}
 
 impl<'a> TryFrom<Request<'a>> for Bytes {
     type Error = Error;
@@ -71,10 +54,11 @@ impl TryFrom<(Bytes, Request<'_>)> for Response {
     type Error = Error;
     fn try_from((bytes, req): (Bytes, Request)) -> Result<Self, Self::Error> {
         let header = ResponseHeader::new();
-        // 使用 matches 方法检查帧头是否匹配
-        if !header.matches(&bytes) {
-            return Err(Error::new(ErrorKind::InvalidData, "帧头不匹配"));
-        }
+
+        // // 使用 matches 方法检查帧头是否匹配
+        // if !header.matches(&bytes) {
+        //     return Err(Error::new(ErrorKind::InvalidData, "帧头不匹配"));
+        // }
 
         let mut rdr = Cursor::new(&bytes[header.bytes().len()..]); // 跳过帧头
 

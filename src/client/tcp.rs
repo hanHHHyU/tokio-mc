@@ -1,45 +1,59 @@
-// use std::{fmt, io, net::SocketAddr};
+use std::{io, net::SocketAddr};
 
-// use tokio::{
-//     io::{AsyncRead, AsyncWrite},
-//     net::TcpStream,
-// };
+use async_trait::async_trait;
+use bytes::Bytes;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
 
-// use super::*;
+use crate::error;
 
-// /// Establish a direct connection to a Modbus TCP coupler.
-// pub async fn connect(socket_addr: SocketAddr) -> io::Result<Context> {
-//     connect_slave(socket_addr).await
-// }
+use super::{Client, ExceptionCode, Request, Response};
+#[derive(Debug)]
+pub struct TcpClient {
+    stream: TcpStream, // 直接保存 TcpStream 实例
+}
 
-// /// Connect to a physical, broadcast, or custom Modbus device,
-// /// probably through a Modbus TCP gateway that is forwarding
-// /// messages to/from the corresponding slave device.
-// pub async fn connect_slave(socket_addr: SocketAddr) -> io::Result<Context> {
-//     let transport = TcpStream::connect(socket_addr).await?;
-//     let context = attach_slave(transport);
-//     Ok(context)
-// }
+impl TcpClient {
+    /// 创建 TcpClient 实例并建立连接
+    pub async fn new(addr: SocketAddr) -> Result<Self, io::Error> {
+        let stream = TcpStream::connect(addr).await?;
+        println!("Connected to {:?}", addr);
+        Ok(Self {  stream })
+    }
+}
 
-// /// Attach a new client context to a direct transport connection.
-// ///
-// /// The connection could either be an ordinary [`TcpStream`] or a TLS connection.
-// pub fn attach<T>(transport: T) -> Context
-// where
-//     T: AsyncRead + AsyncWrite + Send + Unpin + fmt::Debug + 'static,
-// {
-//     attach_slave(transport)
-// }
+#[async_trait]
+impl Client for TcpClient {
+    async fn call(
+        &mut self,
+        request: Request<'_>,
+    ) -> Result<Result<Response, ExceptionCode>, error::Error> {
+        println!("Processing request: {:?}", request);
 
-// /// Attach a new client context to a transport connection.
-// ///
-// /// The connection could either be an ordinary [`TcpStream`] or a TLS connection.
-// pub fn attach_slave<T>(transport: T) -> Context
-// where
-//     T: AsyncRead + AsyncWrite + Send + Unpin + fmt::Debug + 'static,
-// {
-//     let client = crate::service::tcp::Client::new(transport);
-//     Context {
-//         client: Box::new(client),
-//     }
-// }
+        // 1. 将 Request 转换为 Bytes
+        let request_bytes = Bytes::try_from(request.clone()).unwrap();
+
+        // 2. 发送请求
+        self.stream.write_all(&request_bytes[..]).await?;
+
+        // 3. 接收响应
+        let mut buffer = vec![0; 4096];
+        let n = self.stream.read(&mut buffer).await?;
+
+        // 打印接收到的数据（十六进制格式）
+        println!("接收到的数据 (十六进制):");
+        for byte in &buffer[..n] {
+            print!("{:02X} ", byte);
+        }
+        println!();
+
+        // 4. 解析响应数据，将字节缓冲区转换为 Response
+        let response_bytes = Bytes::copy_from_slice(&buffer[..n]);
+        let response = Response::try_from((response_bytes, request)).unwrap();
+
+        Ok(Ok(response))
+
+    }
+}

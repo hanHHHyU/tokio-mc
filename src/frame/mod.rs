@@ -55,9 +55,7 @@ impl Display for FunctionCode {
         write!(f, "{:?}", &bytes[..]) // 使用 Debug 格式化字节切片
     }
 }
-
-pub(crate) mod tcp;
-
+    
 pub type Address = u32;
 
 pub(crate) type Bit = bool;
