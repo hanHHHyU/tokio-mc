@@ -1,6 +1,6 @@
 use std::{
     convert::TryFrom,
-    io::{self, Cursor, Error, ErrorKind},
+    io::{Cursor, Error, ErrorKind},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt as _};

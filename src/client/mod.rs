@@ -3,7 +3,7 @@ mod sync;
 pub mod tcp;
 
 use async_trait::async_trait;
-use std::{fmt::Debug, io};
+use std::fmt::Debug;
 
 use crate::{frame::*, Result};
 
