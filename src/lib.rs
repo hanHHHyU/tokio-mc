@@ -1,5 +1,5 @@
 pub use self::frame::{
-    Address, ExceptionCode, ExceptionResponse, FunctionCode, Quantity, Request, Response,
+     ExceptionCode, ExceptionResponse, FunctionCode, Quantity, Request, Response,
 };
 pub use bytes;
 

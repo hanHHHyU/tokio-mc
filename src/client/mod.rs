@@ -11,41 +11,24 @@ use crate::{frame::*, Result};
 pub trait Client: Send + Debug {
     /// Invokes a _Modbus_ function.
     async fn call(&mut self, request: Request<'_>) -> Result<Response>;
-
 }
 
 #[async_trait]
 pub trait Reader: Client {
-    async fn read_bits(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Bit>>;
+    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn read_words(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Word>>;
+    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 #[async_trait]
 pub trait Writer: Client {
-    async fn write_multiple_bits(
-        &mut self,
-        addr: Address,
-        bits: &'_ [Bit],
-        code: SoftElementCode,
-    ) -> Result<()>;
+    async fn write_multiple_bits(&mut self, addr: &Address, bits: &'_ [Bit]) -> Result<()>;
 
-    async fn write_multiple_word(
-        &mut self,
-        addr: Address,
-        words: &'_ [Word],
-        code: SoftElementCode,
-    ) -> Result<()>;
+    async fn write_multiple_word(&mut self, addr: &Address, words: &'_ [Word]) -> Result<()>;
 }
 
 /// Asynchronous Modbus client context with generic transport
@@ -55,7 +38,7 @@ pub struct Context<T: Client> {
 }
 
 impl<T: Client> Context<T> {
-    pub  fn new(client: T) -> Self {
+    pub fn new(client: T) -> Self {
         Self { client }
     }
 }
@@ -69,14 +52,12 @@ impl<T: Client> Client for Context<T> {
 
 #[async_trait]
 impl<T: Client> Reader for Context<T> {
-    async fn read_bits(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Bit>> {
+    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
         // 1. 发出请求
-        let call_result = self.client.call(Request::ReadBits(addr, cnt, code)).await;
+        let call_result = self.client.call(Request::ReadBits(addr.as_ref().into(), cnt)).await;
         // 2. 处理 call 的结果
         let result = match call_result {
             Ok(res) => res,
@@ -96,14 +77,15 @@ impl<T: Client> Reader for Context<T> {
         // 5. 返回最终的位数据
         Ok(Ok(bits))
     }
-    async fn read_words(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Word>> {
+    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
         // 1. 发出请求
-        let call_result = self.client.call(Request::ReadWords(addr, cnt, code)).await;
+        let call_result = self
+            .client
+            .call(Request::ReadWords(addr.as_ref().into(), cnt))
+            .await;
         // 2. 处理 call 的结果
         let result = match call_result {
             Ok(res) => res,

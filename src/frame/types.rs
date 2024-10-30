@@ -1,0 +1,27 @@
+pub(crate) type Address = str;
+
+pub(crate) type Bit = bool;
+
+pub(crate) type Word = u16;
+
+pub type Quantity = u16;
+
+pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NumberBase {
+    /// The decimal numbering system base (base 10).
+    ///
+    /// This variant represents numbers using the standard 0-9 digits.
+    Decimal,
+
+    /// The hexadecimal numbering system base (base 16).
+    ///
+    /// This variant represents numbers using 0-9 digits and A-F letters.
+    Hexadecimal,
+}
+
+pub struct PlcInstruction {
+    pub(crate) code: u8,
+    pub(crate) number_base: NumberBase,
+}

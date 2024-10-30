@@ -16,7 +16,7 @@ impl RequestHeader {
         buf.put_u8(0x00); // 网络编号，固定 00
         buf.put_u8(0xFF); // PLC 编号，固定 FF
         buf.put_u16_le(0x03FF); // 目标模块 IO 编号
-        buf.put_u8(0x00); // 目标模块站号，固定 00
+        buf.put_u8(0x01); // 目标模块站号，固定 00
         buf.put_u16_le(0x000C); // 请求数据的长度（根据实际情况调整）
         buf.put_u16_le(0x0010); // 监视定时器
 

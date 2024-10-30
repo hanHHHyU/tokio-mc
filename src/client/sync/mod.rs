@@ -43,35 +43,19 @@ pub trait Client {
 }
 
 pub trait Reader: Client {
-    fn read_bits(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Bit>>;
+    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn read_words(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Word>>;
+    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 pub trait Writer: Client {
-    fn write_multiple_bits(
-        &mut self,
-        addr: Address,
-        bits: &'_ [Bit],
-        code: SoftElementCode,
-    ) -> Result<()>;
+    fn write_multiple_bits(&mut self, addr: &Address, bits: &'_ [Bit]) -> Result<()>;
 
-    fn write_multiple_word(
-        &mut self,
-        addr: Address,
-        words: &'_ [Word],
-        code: SoftElementCode,
-    ) -> Result<()>;
+    fn write_multiple_word(&mut self, addr: &Address, words: &'_ [Word]) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -82,7 +66,6 @@ pub struct Context<T: AsyncClient> {
 }
 
 impl<T: AsyncClient> Context<T> {
-
     /// 构造函数，初始化 `Context`，包含 `runtime` 和 `async_ctx`
     pub fn new(async_ctx: T, runtime: Runtime, timeout: Option<Duration>) -> Self {
         // 将传入的 `async_ctx` 包装为 `AsyncContext`
@@ -98,38 +81,30 @@ impl<T: AsyncClient> Context<T> {
 
 impl<T: AsyncClient> Client for Context<T> {
     fn call(&mut self, request: Request<'_>) -> Result<Response> {
-        block_on_with_timeout(
-            &self.runtime,
-            self.timeout,
-            self.async_ctx.call(request),
-        )
+        block_on_with_timeout(&self.runtime, self.timeout, self.async_ctx.call(request))
     }
 }
 
 impl<T: AsyncClient> Reader for Context<T> {
-    fn read_bits(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Bit>> {
+    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.read_bits(addr, cnt, code),
+            self.async_ctx.read_bits(addr, cnt),
         )
     }
 
-    fn read_words(
-        &mut self,
-        addr: Address,
-        cnt: Quantity,
-        code: SoftElementCode,
-    ) -> Result<Vec<Word>> {
+    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.read_words(addr, cnt, code),
+            self.async_ctx.read_words(addr, cnt),
         )
     }
 }

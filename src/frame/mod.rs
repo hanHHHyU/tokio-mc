@@ -4,7 +4,16 @@ use std::{
     fmt::{self, Display},
 };
 
+pub use types::*;
+
 use crate::bytes::BytesMut;
+
+mod map;
+mod regex;
+mod types;
+
+pub use regex::split_address;
+pub use map::{find_instruction_code,convert_to_base};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCode {
@@ -55,41 +64,14 @@ impl Display for FunctionCode {
         write!(f, "{:?}", &bytes[..]) // 使用 Debug 格式化字节切片
     }
 }
-    
-pub type Address = u32;
-
-pub(crate) type Bit = bool;
-
-pub(crate) type Word = u16;
-
-pub type Quantity = u16;
-
-pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
-
-// 软元件代码的枚举
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum SoftElementCode {
-    X = 0x9C, // 输入继电器
-    Y = 0x9D, // 输出继电器
-    D = 0xA8, // 数据寄存器
-    M = 0x90, // 内存继电器
-              // 其他软元件代码可以继续添加
-}
 
 // 请求的枚举，类似你给出的Modbus请求设计
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request<'a> {
-    /// 读取多个软元件（位），如读取继电器或输入
-    ReadBits(Address, Quantity, SoftElementCode),
-
-    /// 读取多个软元件（字），如数据寄存器
-    ReadWords(Address, Quantity, SoftElementCode),
-
-    /// 写入多个位，如继电器或输入
-    WriteMultipleBits(Address, Cow<'a, [Bit]>, SoftElementCode),
-
-    /// 写入多个字，如数据寄存器
-    WriteMultipleWords(Address, Cow<'a, [Word]>, SoftElementCode),
+    ReadBits(Cow<'a, str>, Quantity),
+    ReadWords(Cow<'a, str>, Quantity),
+    WriteMultipleBits(Cow<'a, str>, Cow<'a, [Bit]>),
+    WriteMultipleWords(Cow<'a, str>, Cow<'a, [Word]>),
 }
 
 // 实现辅助功能，比如将请求转换为'owned'版本或获取功能码
@@ -99,13 +81,13 @@ impl<'a> Request<'a> {
     pub fn into_owned(self) -> Request<'static> {
         use Request::*;
         match self {
-            ReadBits(addr, qty, code) => ReadBits(addr, qty, code),
-            ReadWords(addr, qty, code) => ReadWords(addr, qty, code),
-            WriteMultipleBits(addr, coils, code) => {
-                WriteMultipleBits(addr, Cow::Owned(coils.into_owned()), code)
+            ReadBits(addr, qty) => ReadBits(Cow::Owned(addr.into_owned()), qty),
+            ReadWords(addr, qty) => ReadWords(Cow::Owned(addr.into_owned()), qty),
+            WriteMultipleBits(addr, coils) => {
+                WriteMultipleBits(Cow::Owned(addr.into_owned()), Cow::Owned(coils.into_owned()))
             }
-            WriteMultipleWords(addr, words, code) => {
-                WriteMultipleWords(addr, Cow::Owned(words.into_owned()), code)
+            WriteMultipleWords(addr, words) => {
+                WriteMultipleWords(Cow::Owned(addr.into_owned()), Cow::Owned(words.into_owned()))
             }
         }
     }
@@ -114,10 +96,10 @@ impl<'a> Request<'a> {
     pub const fn function_code(&self) -> FunctionCode {
         use Request::*;
         match self {
-            ReadBits(_, _, _) => FunctionCode::ReadBits,
-            ReadWords(_, _, _) => FunctionCode::ReadWords,
-            WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
-            WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
+            ReadBits(_, _) => FunctionCode::ReadBits,
+            ReadWords(_, _) => FunctionCode::ReadWords,
+            WriteMultipleBits(_, _) => FunctionCode::WriteMultipleBits,
+            WriteMultipleWords(_, _) => FunctionCode::WriteMultipleWords,
         }
     }
 }
