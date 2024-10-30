@@ -11,6 +11,9 @@ use crate::bytes::BytesMut;
 mod map;
 mod regex;
 mod types;
+mod protocol_error;
+
+pub use protocol_error::ProtocolError;
 
 pub use regex::split_address;
 pub use map::{find_instruction_code,convert_to_base};
@@ -110,8 +113,8 @@ pub enum Response {
     ReadWords(Vec<Word>),
     // WriteMultipleBits(Address, Quantity, SoftElementCode),
     // WriteMultipleWords(Address, Quantity, SoftElementCode),
-    WriteMultipleBits,
-    WriteMultipleWords,
+    WriteMultipleBits(),
+    WriteMultipleWords(),
 }
 
 impl Response {
@@ -124,164 +127,13 @@ impl Response {
             ReadWords(_) => FunctionCode::ReadWords,
             // WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
             // WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
-            WriteMultipleBits => FunctionCode::WriteMultipleBits,
-            WriteMultipleWords => FunctionCode::WriteMultipleWords,
+            WriteMultipleBits() => FunctionCode::WriteMultipleBits,
+            WriteMultipleWords() => FunctionCode::WriteMultipleWords,
         }
     }
 }
 
-/// A server (slave) exception.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExceptionCode {
-    /// 0x01
-    IllegalFunction,
-    /// 0x02
-    IllegalDataAddress,
-    /// 0x03
-    IllegalDataValue,
-    /// 0x04
-    ServerDeviceFailure,
-    /// 0x05
-    Acknowledge,
-    /// 0x06
-    ServerDeviceBusy,
-    /// 0x08
-    MemoryParityError,
-    /// 0x0A
-    GatewayPathUnavailable,
-    /// 0x0B
-    GatewayTargetDevice,
-    /// None of the above.
-    ///
-    /// Although encoding one of the predefined values as this is possible, it is not recommended.
-    /// Instead, prefer to use [`Self::new()`] to prevent such ambiguities.
-    Custom(u8),
-}
 
-impl From<ExceptionCode> for u8 {
-    fn from(from: ExceptionCode) -> Self {
-        use crate::frame::ExceptionCode::*;
-        match from {
-            IllegalFunction => 0x01,
-            IllegalDataAddress => 0x02,
-            IllegalDataValue => 0x03,
-            ServerDeviceFailure => 0x04,
-            Acknowledge => 0x05,
-            ServerDeviceBusy => 0x06,
-            MemoryParityError => 0x08,
-            GatewayPathUnavailable => 0x0A,
-            GatewayTargetDevice => 0x0B,
-            Custom(code) => code,
-        }
-    }
-}
-
-impl ExceptionCode {
-    /// Create a new [`ExceptionCode`] with `value`.
-    #[must_use]
-    pub const fn new(value: u8) -> Self {
-        use crate::frame::ExceptionCode::*;
-
-        match value {
-            0x01 => IllegalFunction,
-            0x02 => IllegalDataAddress,
-            0x03 => IllegalDataValue,
-            0x04 => ServerDeviceFailure,
-            0x05 => Acknowledge,
-            0x06 => ServerDeviceBusy,
-            0x08 => MemoryParityError,
-            0x0A => GatewayPathUnavailable,
-            0x0B => GatewayTargetDevice,
-            other => Custom(other),
-        }
-    }
-
-    pub(crate) fn description(&self) -> &str {
-        use crate::frame::ExceptionCode::*;
-
-        match *self {
-            IllegalFunction => "Illegal function",
-            IllegalDataAddress => "Illegal data address",
-            IllegalDataValue => "Illegal data value",
-            ServerDeviceFailure => "Server device failure",
-            Acknowledge => "Acknowledge",
-            ServerDeviceBusy => "Server device busy",
-            MemoryParityError => "Memory parity error",
-            GatewayPathUnavailable => "Gateway path unavailable",
-            GatewayTargetDevice => "Gateway target device failed to respond",
-            Custom(_) => "Custom",
-        }
-    }
-}
-
-/// A server (slave) exception response.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExceptionResponse {
-    pub function: FunctionCode,
-    pub exception: ExceptionCode,
-}
-
-/// Represents a message from the client (slave) to the server (master).
-#[derive(Debug, Clone)]
-pub(crate) struct RequestPdu<'a>(pub(crate) Request<'a>);
-
-impl<'a> From<Request<'a>> for RequestPdu<'a> {
-    fn from(from: Request<'a>) -> Self {
-        RequestPdu(from)
-    }
-}
-
-impl<'a> From<RequestPdu<'a>> for Request<'a> {
-    fn from(from: RequestPdu<'a>) -> Self {
-        from.0
-    }
-}
-
-/// Represents a message from the server (slave) to the client (master).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResponsePdu(pub(crate) Result<Response, ExceptionResponse>);
-
-impl From<Response> for ResponsePdu {
-    fn from(from: Response) -> Self {
-        ResponsePdu(Ok(from))
-    }
-}
-
-impl From<ExceptionResponse> for ResponsePdu {
-    fn from(from: ExceptionResponse) -> Self {
-        ResponsePdu(Err(from))
-    }
-}
-
-impl From<ResponsePdu> for Result<Response, ExceptionResponse> {
-    fn from(from: ResponsePdu) -> Self {
-        from.0
-    }
-}
-
-impl fmt::Display for ExceptionCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.description())
-    }
-}
-
-impl error::Error for ExceptionCode {
-    fn description(&self) -> &str {
-        self.description()
-    }
-}
-
-impl fmt::Display for ExceptionResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Modbus function {}: {}", self.function, self.exception)
-    }
-}
-
-impl error::Error for ExceptionResponse {
-    fn description(&self) -> &str {
-        self.exception.description()
-    }
-}
 
 #[cfg(test)]
 mod tests {

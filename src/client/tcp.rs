@@ -1,15 +1,16 @@
 use std::{io, net::SocketAddr};
 
 use async_trait::async_trait;
+use byteorder::{ByteOrder, LittleEndian};
 use bytes::Bytes;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
 
-use crate::error;
+use crate::{frame::ProtocolError, header::ResponseHeader, Error};
 
-use super::{Client, Context, ExceptionCode, Request, Response};
+use super::{Client, Context, Request, Response};
 
 pub async fn connect(socket_addr: SocketAddr) -> io::Result<Context<TcpClient>> {
     // 等待 TcpClient::new 的 Future 完成，获得 TcpClient 实例
@@ -35,10 +36,7 @@ impl TcpClient {
 
 #[async_trait]
 impl Client for TcpClient {
-    async fn call(
-        &mut self,
-        request: Request<'_>,
-    ) -> Result<Result<Response, ExceptionCode>, error::Error> {
+    async fn call(&mut self, request: Request<'_>) -> Result<Response, Error> {
         println!("Processing request: {:?}", request);
 
         // 1. 将 Request 转换为 Bytes
@@ -59,9 +57,31 @@ impl Client for TcpClient {
         println!();
 
         // 4. 解析响应数据，将字节缓冲区转换为 Response
-        let response_bytes = Bytes::copy_from_slice(&buffer[..n]);
+        let response_bytes: Bytes = Bytes::copy_from_slice(&buffer[..n]);
+
+        check_response(&response_bytes)?;
         let response = Response::try_from((response_bytes, request)).unwrap();
 
-        Ok(Ok(response))
+        Ok(response)
     }
+}
+
+fn check_response(response_bytes: &[u8]) -> Result<(), Error> {
+    let header_len = ResponseHeader::new().len();
+    // 获取响应字节缓冲区的前 `header_len` 字节，并提取最后两个字节
+    let last_two_bytes = &response_bytes[..header_len][header_len - 2..];
+    println!(
+        "Last two bytes in hex: {:02X} {:02X}",
+        last_two_bytes[0], last_two_bytes[1]
+    );
+
+    // 将最后两个字节转换为小端格式的 16 位整数
+    let last_two = LittleEndian::read_u16(last_two_bytes);
+
+    // 判断是否在 `0xC051` 到 `0xC054` 的范围内
+    if (0xC051..=0xC054).contains(&last_two) {
+        return Err(ProtocolError::OutOfRange.into()); // 自动转换为 Error::Protocol
+    }
+
+    Ok(())
 }

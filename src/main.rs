@@ -50,7 +50,7 @@ use std::io;
 use std::net::SocketAddr;
 use tokio::sync::{Mutex, OnceCell};
 use tokio_mc::client::tcp::TcpClient;
-use tokio_mc::client::{Context, Reader};
+use tokio_mc::client::{Context, Reader, Writer};
 
 // 假设 TcpClient 和 Context 已经定义
 static CONTEXT: Lazy<OnceCell<Mutex<Context<TcpClient>>>> = Lazy::new(OnceCell::new);
@@ -77,7 +77,10 @@ async fn main() -> io::Result<()> {
     // 从全局 CONTEXT 获取实例并调用 `read_words`
     let context = get_context().await;
     let mut context = context.lock().await;
-    let result = context.read_words("D0", 10).await;
+
+    context.write_multiple_word("D0", &[10] ).await;
+
+    let result = context.read_words("D0", 9000).await;
 
     println!("Read bits response: {:?}", result);
     Ok(())

@@ -2,7 +2,7 @@ use futures_util::future::Either;
 use std::{future::Future, io, time::Duration};
 use tokio::runtime::Runtime;
 
-use crate::{frame::*, Result};
+use crate::{frame::*, Error};
 
 use super::{Client as AsyncClient, Context as AsyncContext, Reader as _, Writer as _};
 
@@ -39,23 +39,23 @@ where
 
 /// A transport independent synchronous client trait.
 pub trait Client {
-    fn call(&mut self, req: Request<'_>) -> Result<Response>;
+    fn call(&mut self, req: Request<'_>) -> Result<Response, Error>;
 }
 
 pub trait Reader: Client {
-    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 pub trait Writer: Client {
-    fn write_multiple_bits(&mut self, addr: &Address, bits: &'_ [Bit]) -> Result<()>;
+    fn write_multiple_bits(&mut self, addr: &Address, bits: &'_ [Bit]) -> Result<(), Error>;
 
-    fn write_multiple_word(&mut self, addr: &Address, words: &'_ [Word]) -> Result<()>;
+    fn write_multiple_word(&mut self, addr: &Address, words: &'_ [Word]) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
@@ -80,13 +80,13 @@ impl<T: AsyncClient> Context<T> {
 }
 
 impl<T: AsyncClient> Client for Context<T> {
-    fn call(&mut self, request: Request<'_>) -> Result<Response> {
+    fn call(&mut self, request: Request<'_>) -> Result<Response, Error> {
         block_on_with_timeout(&self.runtime, self.timeout, self.async_ctx.call(request))
     }
 }
 
 impl<T: AsyncClient> Reader for Context<T> {
-    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -97,7 +97,7 @@ impl<T: AsyncClient> Reader for Context<T> {
         )
     }
 
-    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {

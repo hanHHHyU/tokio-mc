@@ -16,7 +16,7 @@ impl RequestHeader {
         buf.put_u8(0x00); // 网络编号，固定 00
         buf.put_u8(0xFF); // PLC 编号，固定 FF
         buf.put_u16_le(0x03FF); // 目标模块 IO 编号
-        buf.put_u8(0x01); // 目标模块站号，固定 00
+        buf.put_u8(0x00); // 目标模块站号，固定 00
         buf.put_u16_le(0x000C); // 请求数据的长度（根据实际情况调整）
         buf.put_u16_le(0x0010); // 监视定时器
 
@@ -48,9 +48,10 @@ impl ResponseHeader {
         buf.put_u8(0x00); // 网络编号，固定 00
         buf.put_u8(0xFF); // PLC 编号，固定 FF
         buf.put_u16_le(0x03FF); // 目标模块 IO 编号
+        buf.put_u8(0x00);
         buf.put_u16_le(2); // 长度默认
                            // buf.put_u16_le(0); // 代码，默认成功 00
-
+        buf.put_u16_le(2); // 回馈代码
         // D0 00 00 FF FF 03 00
 
         // 将 BytesMut 冻结为不可变的 Bytes
@@ -62,8 +63,8 @@ impl ResponseHeader {
         &self.0
     }
 
-    pub fn matches(&self, bytes: &Bytes) -> bool {
-        let header_bytes = self.bytes();
-        bytes.len() >= header_bytes.len() && bytes.starts_with(header_bytes)
+    /// 获取响应头的字节数组长度
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }

@@ -16,7 +16,7 @@ impl<'a> TryFrom<Request<'a>> for Bytes {
     type Error = Error;
 
     #[allow(clippy::panic_in_result_fn)] // Intentional unreachable!()
-    fn try_from(req: Request<'a>) -> Result<Bytes, Self::Error> {
+    fn try_from(req: Request<'a>) -> Result<Bytes, Error> {
         use crate::frame::Request::*;
         let header = RequestHeader::new();
         let cnt = request_byte_count(&req, header.len());
@@ -26,9 +26,15 @@ impl<'a> TryFrom<Request<'a>> for Bytes {
 
         // 获取通用的地址、代码和进制数
         let (address, quantity_or_len) = match req {
-            ReadBits(ref address, quantity) | ReadWords(ref address, quantity) => (address.clone(), quantity),
-            WriteMultipleBits(ref address, ref bits) => (address.clone(), bits.len().try_into().unwrap()),
-            WriteMultipleWords(ref address, ref words) => (address.clone(), words.len().try_into().unwrap()),
+            ReadBits(ref address, quantity) | ReadWords(ref address, quantity) => {
+                (address.clone(), quantity)
+            }
+            WriteMultipleBits(ref address, ref bits) => {
+                (address.clone(), bits.len().try_into().unwrap())
+            }
+            WriteMultipleWords(ref address, ref words) => {
+                (address.clone(), words.len().try_into().unwrap())
+            }
         };
 
         let (prefix, number) = split_address(&address).unwrap();
@@ -41,14 +47,14 @@ impl<'a> TryFrom<Request<'a>> for Bytes {
         // 根据不同请求类型完成额外数据写入
         match req {
             ReadBits(_, _) | ReadWords(_, _) => {}
-            WriteMultipleBits(_,ref bits) => {
+            WriteMultipleBits(_, ref bits) => {
                 // 将 `bits` 中的每两个 bit 组合成一个字节并写入
                 for chunk in bits.chunks(2) {
                     let byte = (chunk[0] as u8) << 4 | chunk.get(1).map_or(0, |&bit| bit as u8);
                     data.put_u8(byte);
                 }
             }
-            WriteMultipleWords(_,ref words) => {
+            WriteMultipleWords(_, ref words) => {
                 // 将 words 中每个 u16 值以小端序写入 data
                 for &word in words.iter() {
                     data.put_u16_le(word);
@@ -71,13 +77,13 @@ impl TryFrom<(Bytes, Request<'_>)> for Response {
         //     return Err(Error::new(ErrorKind::InvalidData, "帧头不匹配"));
         // }
 
-        let mut rdr = Cursor::new(&bytes[header.bytes().len()..]); // 跳过帧头
+        let mut rdr = Cursor::new(&bytes[header.bytes().len() ..]); // 跳过帧头
 
-        // 使用 byteorder 库的小端读取方法
-        let first_byte = rdr.read_u16::<LittleEndian>()?;
-        if first_byte != 0x00 {
-            return Err(Error::new(ErrorKind::InvalidData, "第一个字节不是 0x00"));
-        }
+        // // 使用 byteorder 库的小端读取方法
+        // let first_byte = rdr.read_u16::<LittleEndian>()?;
+        // if first_byte != 0x00 {
+        //     return Err(Error::new(ErrorKind::InvalidData, "第一个字节不是 0x00"));
+        // }
 
         // 根据请求类型解析响应数据
         match req {
@@ -98,15 +104,15 @@ impl TryFrom<(Bytes, Request<'_>)> for Response {
             Request::ReadWords(_, quantity) => {
                 let mut words = Vec::with_capacity(quantity as usize);
                 for _ in 0..quantity {
-                    // 读取小端字节序的 u16 值并放入 words 向量
+                    // 读取小端字节序的 u16 值并放入 words 向量g
                     let word = rdr.read_u16::<LittleEndian>()?;
                     words.push(word);
                 }
 
                 Ok(Response::ReadWords(words))
             }
-            Request::WriteMultipleBits(_, _) => Ok(Response::WriteMultipleBits),
-            Request::WriteMultipleWords(_, _) => Ok(Response::WriteMultipleWords),
+            Request::WriteMultipleBits(_, _) => Ok(Response::WriteMultipleBits()),
+            Request::WriteMultipleWords(_, _) => Ok(Response::WriteMultipleWords()),
         }
     }
 }
@@ -115,9 +121,7 @@ fn request_byte_count(req: &Request<'_>, header_len: usize) -> usize {
     use crate::frame::Request::*;
     match *req {
         ReadBits(_, _) | ReadWords(_, _) => header_len + REQUEST_BYTE_LAST_LEN,
-        WriteMultipleBits(_, ref bits) => {
-            header_len + REQUEST_BYTE_LAST_LEN + (bits.len() + 1) / 2
-        }
+        WriteMultipleBits(_, ref bits) => header_len + REQUEST_BYTE_LAST_LEN + (bits.len() + 1) / 2,
         WriteMultipleWords(_, ref words) => header_len + REQUEST_BYTE_LAST_LEN + words.len() * 2,
     }
 }
@@ -128,24 +132,6 @@ fn request_command(data: &mut BytesMut, address: u32, code: u8, cnt: u16) {
     data.put_u8((address >> 16) as u8); // 高位字节
     data.put_u8(code);
     data.put_u16_le(cnt);
-}
-
-fn parse_bytes_to_bools(data: &Bytes, quantity: usize) -> Vec<bool> {
-    let mut bits = Vec::with_capacity(quantity);
-
-    for byte in data.iter() {
-        // 高 4 位转换为 bool
-        bits.push((byte >> 4) & 0b0001 != 0);
-        // 低 4 位转换为 bool
-        bits.push(byte & 0b0001 != 0);
-
-        // 确保我们不会超过需要的数量
-        if bits.len() >= quantity {
-            break;
-        }
-    }
-
-    bits
 }
 
 #[cfg(test)]

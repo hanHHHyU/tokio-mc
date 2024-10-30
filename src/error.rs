@@ -5,7 +5,7 @@
 
 use thiserror::Error;
 
-use crate::{ExceptionResponse, FunctionCode, Response};
+use crate::frame::ProtocolError;
 
 /// Protocol or transport errors.
 ///
@@ -13,32 +13,8 @@ use crate::{ExceptionResponse, FunctionCode, Response};
 /// or network issues can cause these errors.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(transparent)]
-    Protocol(#[from] ProtocolError),
+    #[error("Protocol error occurred: {0:?}")]
+    Protocol(#[from] ProtocolError), // 将 ProtocolError 包装为 Protocol 错误
     #[error(transparent)]
     Transport(#[from] std::io::Error),
-}
-
-/// _Modbus_ protocol error.
-#[derive(Debug, Error)]
-pub enum ProtocolError {
-    /// The received response header doesn't match the request.
-    ///
-    /// The error message contains details about the mismatch.
-    ///
-    /// The result received from the server is included for further analysis and handling.
-    #[error("mismatching headers: {message} {result:?}")]
-    HeaderMismatch {
-        message: String,
-        result: Result<Response, ExceptionResponse>,
-    },
-
-    /// The received response function code doesn't match the request.
-    ///
-    /// The result received from the server is included for further analysis and handling.
-    #[error("mismatching function codes: {request} {result:?}")]
-    FunctionCodeMismatch {
-        request: FunctionCode,
-        result: Result<Response, ExceptionResponse>,
-    },
 }

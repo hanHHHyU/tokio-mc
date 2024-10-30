@@ -3,32 +3,37 @@ pub mod sync;
 pub mod tcp;
 
 use async_trait::async_trait;
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
-use crate::{frame::*, Result};
+use crate::frame::*;
+use crate::Error;
 
 #[async_trait]
 pub trait Client: Send + Debug {
     /// Invokes a _Modbus_ function.
-    async fn call(&mut self, request: Request<'_>) -> Result<Response>;
+    async fn call(&mut self, request: Request<'_>) -> Result<Response, Error>;
 }
 
 #[async_trait]
 pub trait Reader: Client {
-    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 #[async_trait]
 pub trait Writer: Client {
-    async fn write_multiple_bits(&mut self, addr: &Address, bits: &'_ [Bit]) -> Result<()>;
+    async fn write_multiple_bits<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn write_multiple_word(&mut self, addr: &Address, words: &'_ [Word]) -> Result<()>;
+    async fn write_multiple_word<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 /// Asynchronous Modbus client context with generic transport
@@ -45,39 +50,29 @@ impl<T: Client> Context<T> {
 
 #[async_trait]
 impl<T: Client> Client for Context<T> {
-    async fn call(&mut self, request: Request<'_>) -> Result<Response> {
+    async fn call(&mut self, request: Request<'_>) -> Result<Response, Error> {
         self.client.call(request).await
     }
 }
 
 #[async_trait]
 impl<T: Client> Reader for Context<T> {
-    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>>
+    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         // 1. 发出请求
-        let call_result = self.client.call(Request::ReadBits(addr.as_ref().into(), cnt)).await;
-        // 2. 处理 call 的结果
-        let result = match call_result {
-            Ok(res) => res,
-            Err(e) => return Err(e.into()),
-        };
+        let call_result: Response = self
+            .client
+            .call(Request::ReadBits(addr.as_ref().into(), cnt))
+            .await?;
 
-        // 3. 确保响应是 `ReadBits` 类型并提取位数据
-        let mut bits = match result {
-            Ok(Response::ReadBits(bits)) => bits,
-            _ => unreachable!("call() should reject mismatching responses"),
-        };
-
-        // 4. 截断数据到指定数量
-        debug_assert!(bits.len() >= cnt.into());
-        bits.truncate(cnt.into());
-
-        // 5. 返回最终的位数据
-        Ok(Ok(bits))
+        match call_result {
+            Response::ReadBits(bits) => Ok(bits),
+            _ => unreachable!("Only ReadBits responses are expected"),
+        }
     }
-    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>>
+    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -85,25 +80,63 @@ impl<T: Client> Reader for Context<T> {
         let call_result = self
             .client
             .call(Request::ReadWords(addr.as_ref().into(), cnt))
-            .await;
-        // 2. 处理 call 的结果
-        let result = match call_result {
-            Ok(res) => res,
-            Err(e) => return Err(e.into()),
-        };
+            .await?;
+        match call_result {
+            Response::ReadWords(words) => Ok(words),
+            _ => unreachable!("Only ReadBits responses are expected"),
+        }
+    }
+}
 
-        // 3. 确保响应是 `ReadBits` 类型并提取位数据
-        let mut words = match result {
-            Ok(Response::ReadWords(words)) => words,
-            _ => unreachable!("call() should reject mismatching responses"),
-        };
+#[async_trait]
+impl<T: Client> Writer for Context<T> {
+    async fn write_multiple_bits<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        // match self
+        //     .client
+        //     .call(Request::WriteMultipleBits(
+        //         addr.as_ref().into(),
+        //         Cow::Borrowed(bits),
+        //     ))
+        //     .await?
+        // {
+        //     Ok(Response::WriteMultipleBits) => Ok(Ok(())),
+        //     Ok(_) => unreachable!("call() should reject mismatching responses"),
+        //     Err(e) => Err(Error::from(e)), // 使用 Error::from(e) 手动转换
+        // }
 
-        // 4. 截断数据到指定数量
-        debug_assert!(words.len() >= cnt.into());
-        words.truncate(cnt.into());
+        // 1. 发出请求
+        let call_result = self
+            .client
+            .call(Request::WriteMultipleBits(
+                addr.as_ref().into(),
+                Cow::Borrowed(bits),
+            ))
+            .await?;
+        match call_result {
+            Response::WriteMultipleBits() => Ok(()),
+            _ => unreachable!("Only ReadBits responses are expected"),
+        }
+    }
 
-        // 5. 返回最终的位数据
-        Ok(Ok(words))
+    async fn write_multiple_word<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+         // 1. 发出请求
+         let call_result = self
+         .client
+         .call(Request::WriteMultipleWords(
+             addr.as_ref().into(),
+             Cow::Borrowed(words),
+         ))
+         .await?;
+     match call_result {
+         Response::WriteMultipleWords() => Ok(()),
+         _ => unreachable!("Only ReadBits responses are expected"),
+     }
     }
 }
 
