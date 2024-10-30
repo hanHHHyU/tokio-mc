@@ -13,7 +13,7 @@ mod regex;
 mod types;
 mod protocol_error;
 
-pub use protocol_error::ProtocolError;
+pub use protocol_error::{ProtocolError,map_error_code};
 
 pub use regex::split_address;
 pub use map::{find_instruction_code,convert_to_base};

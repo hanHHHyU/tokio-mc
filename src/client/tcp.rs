@@ -8,7 +8,11 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{frame::ProtocolError, header::ResponseHeader, Error};
+use crate::{
+    frame::{map_error_code},
+    header::ResponseHeader,
+    Error,
+};
 
 use super::{Client, Context, Request, Response};
 
@@ -78,9 +82,8 @@ fn check_response(response_bytes: &[u8]) -> Result<(), Error> {
     // 将最后两个字节转换为小端格式的 16 位整数
     let last_two = LittleEndian::read_u16(last_two_bytes);
 
-    // 判断是否在 `0xC051` 到 `0xC054` 的范围内
-    if (0xC051..=0xC054).contains(&last_two) {
-        return Err(ProtocolError::OutOfRange.into()); // 自动转换为 Error::Protocol
+    if let Some(error) = map_error_code(last_two) {
+        return Err(error.into());
     }
 
     Ok(())
