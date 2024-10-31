@@ -5,8 +5,8 @@ use tokio::runtime::Runtime;
 use crate::{frame::*, Error};
 
 use super::{Client as AsyncClient, Context as AsyncContext, Reader as _, Writer as _};
-
-mod tcp;
+#[cfg(feature = "sync")]    
+pub mod tcp;
 
 fn block_on_with_timeout<T, E>(
     runtime: &tokio::runtime::Runtime, // 传入一个 Tokio 运行时

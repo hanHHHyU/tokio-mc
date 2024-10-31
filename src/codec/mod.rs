@@ -1,6 +1,6 @@
 use std::{
     convert::TryFrom,
-    io::{Cursor, Error, ErrorKind},
+    io::{Cursor, Error},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt as _};
@@ -77,7 +77,7 @@ impl TryFrom<(Bytes, Request<'_>)> for Response {
         //     return Err(Error::new(ErrorKind::InvalidData, "帧头不匹配"));
         // }
 
-        let mut rdr = Cursor::new(&bytes[header.bytes().len() ..]); // 跳过帧头
+        let mut rdr = Cursor::new(&bytes[header.bytes().len()..]); // 跳过帧头
 
         // // 使用 byteorder 库的小端读取方法
         // let first_byte = rdr.read_u16::<LittleEndian>()?;

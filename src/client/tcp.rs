@@ -9,7 +9,7 @@ use tokio::{
 };
 
 use crate::{
-    frame::{map_error_code},
+    frame::map_error_code,
     header::ResponseHeader,
     Error,
 };

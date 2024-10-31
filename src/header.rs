@@ -11,8 +11,8 @@ impl RequestHeader {
         let mut buf = BytesMut::new();
 
         // 写入固定的头部
-        buf.put_u8(0x50); // 3E 协议头
-        buf.put_u8(0x00); // 固定 00
+        #[cfg(feature = "3e")]
+        buf.put_u16_le(0x0050); // 3E 协议头
         buf.put_u8(0x00); // 网络编号，固定 00
         buf.put_u8(0xFF); // PLC 编号，固定 FF
         buf.put_u16_le(0x03FF); // 目标模块 IO 编号
@@ -52,7 +52,7 @@ impl ResponseHeader {
         buf.put_u16_le(2); // 长度默认
                            // buf.put_u16_le(0); // 代码，默认成功 00
         buf.put_u16_le(2); // 回馈代码
-        // D0 00 00 FF FF 03 00
+                           // D0 00 00 FF FF 03 00
 
         // 将 BytesMut 冻结为不可变的 Bytes
         ResponseHeader(buf.freeze())
