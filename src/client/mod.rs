@@ -32,7 +32,7 @@ pub trait Writer: Client {
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn write_multiple_word<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    async fn write_multiple_words<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -95,19 +95,6 @@ impl<T: Client> Writer for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        // match self
-        //     .client
-        //     .call(Request::WriteMultipleBits(
-        //         addr.as_ref().into(),
-        //         Cow::Borrowed(bits),
-        //     ))
-        //     .await?
-        // {
-        //     Ok(Response::WriteMultipleBits) => Ok(Ok(())),
-        //     Ok(_) => unreachable!("call() should reject mismatching responses"),
-        //     Err(e) => Err(Error::from(e)), // 使用 Error::from(e) 手动转换
-        // }
-
         // 1. 发出请求
         let call_result = self
             .client
@@ -122,22 +109,22 @@ impl<T: Client> Writer for Context<T> {
         }
     }
 
-    async fn write_multiple_word<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    async fn write_multiple_words<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-         // 1. 发出请求
-         let call_result = self
-         .client
-         .call(Request::WriteMultipleWords(
-             addr.as_ref().into(),
-             Cow::Borrowed(words),
-         ))
-         .await?;
-     match call_result {
-         Response::WriteMultipleWords() => Ok(()),
-         _ => unreachable!("Only ReadBits responses are expected"),
-     }
+        // 1. 发出请求
+        let call_result = self
+            .client
+            .call(Request::WriteMultipleWords(
+                addr.as_ref().into(),
+                Cow::Borrowed(words),
+            ))
+            .await?;
+        match call_result {
+            Response::WriteMultipleWords() => Ok(()),
+            _ => unreachable!("Only ReadBits responses are expected"),
+        }
     }
 }
 

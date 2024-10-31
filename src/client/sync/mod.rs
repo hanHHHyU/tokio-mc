@@ -5,7 +5,7 @@ use tokio::runtime::Runtime;
 use crate::{frame::*, Error};
 
 use super::{Client as AsyncClient, Context as AsyncContext, Reader as _, Writer as _};
-#[cfg(feature = "sync")]    
+#[cfg(feature = "sync")]
 pub mod tcp;
 
 fn block_on_with_timeout<T, E>(
@@ -37,7 +37,6 @@ where
     runtime.block_on(task)
 }
 
-/// A transport independent synchronous client trait.
 pub trait Client {
     fn call(&mut self, req: Request<'_>) -> Result<Response, Error>;
 }
@@ -53,9 +52,13 @@ pub trait Reader: Client {
 }
 
 pub trait Writer: Client {
-    fn write_multiple_bits(&mut self, addr: &Address, bits: &'_ [Bit]) -> Result<(), Error>;
+    fn write_multiple_bits<A>(&mut self, addr: &A, bits: &'_ [Bit]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn write_multiple_word(&mut self, addr: &Address, words: &'_ [Word]) -> Result<(), Error>;
+    fn write_multiple_words<A>(&mut self, addr: &A, words: &'_ [Word]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 #[derive(Debug)]
@@ -105,6 +108,30 @@ impl<T: AsyncClient> Reader for Context<T> {
             &self.runtime,
             self.timeout,
             self.async_ctx.read_words(addr, cnt),
+        )
+    }
+}
+
+impl<T: AsyncClient> Writer for Context<T> {
+    fn write_multiple_bits<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_multiple_bits(addr, bits),
+        )
+    }
+
+    fn write_multiple_words<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_multiple_words(addr, words),
         )
     }
 }

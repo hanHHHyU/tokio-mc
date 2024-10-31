@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    error,
     fmt::{self, Display},
 };
 
@@ -8,15 +7,15 @@ pub use types::*;
 
 use crate::bytes::BytesMut;
 
+mod error;
 mod map;
 mod regex;
 mod types;
-mod protocol_error;
 
-pub use protocol_error::{ProtocolError,map_error_code};
+pub use error::{map_error_code, ProtocolError};
 
+pub use map::{convert_to_base, find_instruction_code};
 pub use regex::split_address;
-pub use map::{find_instruction_code,convert_to_base};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCode {
@@ -86,12 +85,14 @@ impl<'a> Request<'a> {
         match self {
             ReadBits(addr, qty) => ReadBits(Cow::Owned(addr.into_owned()), qty),
             ReadWords(addr, qty) => ReadWords(Cow::Owned(addr.into_owned()), qty),
-            WriteMultipleBits(addr, coils) => {
-                WriteMultipleBits(Cow::Owned(addr.into_owned()), Cow::Owned(coils.into_owned()))
-            }
-            WriteMultipleWords(addr, words) => {
-                WriteMultipleWords(Cow::Owned(addr.into_owned()), Cow::Owned(words.into_owned()))
-            }
+            WriteMultipleBits(addr, coils) => WriteMultipleBits(
+                Cow::Owned(addr.into_owned()),
+                Cow::Owned(coils.into_owned()),
+            ),
+            WriteMultipleWords(addr, words) => WriteMultipleWords(
+                Cow::Owned(addr.into_owned()),
+                Cow::Owned(words.into_owned()),
+            ),
         }
     }
 
@@ -132,8 +133,6 @@ impl Response {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
