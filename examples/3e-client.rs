@@ -7,7 +7,7 @@ use tokio_mc::{
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let addr = "192.168.110.210:5000"
+    let addr = "192.168.110.252:5000"
         .parse::<SocketAddr>()
         .map_err(|e| Error::Transport(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 

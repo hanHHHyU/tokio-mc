@@ -1,5 +1,3 @@
-pub(crate) type Address = str;
-
 pub(crate) type Bit = bool;
 
 pub(crate) type Word = u16;
