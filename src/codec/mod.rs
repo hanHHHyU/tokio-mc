@@ -1,15 +1,13 @@
-use std::{
-    convert::TryFrom,
-    io::{Cursor, Error},
-};
+use std::{convert::TryFrom, io::Cursor};
 
-use byteorder::{LittleEndian, ReadBytesExt as _};
+use byteorder::{ByteOrder, LittleEndian, ReadBytesExt as _};
 use bytes::Buf;
 
 use crate::{
     bytes::{BufMut, Bytes, BytesMut},
     frame::*,
     header::{RequestHeader, ResponseHeader},
+    Error,
 };
 
 impl<'a> TryFrom<Request<'a>> for Bytes {
@@ -69,7 +67,9 @@ impl<'a> TryFrom<Request<'a>> for Bytes {
 
 impl TryFrom<(Bytes, Request<'_>)> for Response {
     type Error = Error;
-    fn try_from((bytes, req): (Bytes, Request)) -> Result<Self, Self::Error> {
+    fn try_from((bytes, req): (Bytes, Request)) -> Result<Self, Error> {
+        // 检查响应数据的有效性
+        check_response(&bytes)?;
         let header = ResponseHeader::new();
 
         // // 使用 matches 方法检查帧头是否匹配
@@ -132,6 +132,25 @@ fn request_command(data: &mut BytesMut, address: u32, code: u8, cnt: u16) {
     data.put_u8((address >> 16) as u8); // 高位字节
     data.put_u8(code);
     data.put_u16_le(cnt);
+}
+
+fn check_response(response_bytes: &[u8]) -> Result<(), Error> {
+    let header_len = ResponseHeader::new().len();
+    // 获取响应字节缓冲区的前 `header_len` 字节，并提取最后两个字节
+    let last_two_bytes = &response_bytes[..header_len][header_len - 2..];
+    println!(
+        "Last two bytes in hex: {:02X} {:02X}",
+        last_two_bytes[0], last_two_bytes[1]
+    );
+
+    // 将最后两个字节转换为小端格式的 16 位整数
+    let last_two = LittleEndian::read_u16(last_two_bytes);
+
+    if let Some(error) = map_error_code(last_two) {
+        return Err(error.into());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

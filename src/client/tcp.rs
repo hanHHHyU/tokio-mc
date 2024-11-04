@@ -8,11 +8,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{
-    frame::map_error_code,
-    header::ResponseHeader,
-    Error,
-};
+use crate::{frame::map_error_code, header::ResponseHeader, Error};
 
 use super::{Client, Context, Request, Response};
 
@@ -63,28 +59,9 @@ impl Client for TcpClient {
         // 4. 解析响应数据，将字节缓冲区转换为 Response
         let response_bytes: Bytes = Bytes::copy_from_slice(&buffer[..n]);
 
-        check_response(&response_bytes)?;
+        // check_response(&response_bytes)?;
         let response = Response::try_from((response_bytes, request)).unwrap();
 
         Ok(response)
     }
-}
-
-fn check_response(response_bytes: &[u8]) -> Result<(), Error> {
-    let header_len = ResponseHeader::new().len();
-    // 获取响应字节缓冲区的前 `header_len` 字节，并提取最后两个字节
-    let last_two_bytes = &response_bytes[..header_len][header_len - 2..];
-    println!(
-        "Last two bytes in hex: {:02X} {:02X}",
-        last_two_bytes[0], last_two_bytes[1]
-    );
-
-    // 将最后两个字节转换为小端格式的 16 位整数
-    let last_two = LittleEndian::read_u16(last_two_bytes);
-
-    if let Some(error) = map_error_code(last_two) {
-        return Err(error.into());
-    }
-
-    Ok(())
 }

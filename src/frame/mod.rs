@@ -44,7 +44,7 @@ impl FunctionCode {
         let mut buf = BytesMut::new();
         match self {
             FunctionCode::ReadBits => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x01, 0x00]); // 对应 ReadBits 的字节序列
+                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]); // 对应 ReadBits 的字节序列
             }
             FunctionCode::ReadWords => {
                 buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]); // 对应 ReadWords 的字节序列
