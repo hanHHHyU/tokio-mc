@@ -12,8 +12,8 @@ async fn main() -> Result<(), Error> {
         .map_err(|e| Error::Transport(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 
     let mut context = connect(addr).await?;
-    // 调用 read_bits 方法 
-    let result = context.read_words("D0", 100).await?;
+    // 调用 read_bits 方法
+    let result = context.read_bits("X0", 100).await?;
     println!("Read bits response: {:?}", result);
 
     Ok(())

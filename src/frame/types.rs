@@ -6,6 +6,8 @@ pub type Quantity = u16;
 
 pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
 
+pub(crate) const LIMIT: u16 = 900;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NumberBase {
     /// The decimal numbering system base (base 10).

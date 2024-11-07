@@ -51,17 +51,17 @@ impl ResponseHeader {
         buf.put_u8(0x00);
         buf.put_u16_le(2); // 长度默认
                            // buf.put_u16_le(0); // 代码，默认成功 00
-        buf.put_u16_le(2); // 回馈代码
-                           // D0 00 00 FF FF 03 00
+        // buf.put_u16_le(2); // 回馈代码
+        //                    // D0 00 00 FF FF 03 00
 
         // 将 BytesMut 冻结为不可变的 Bytes
         ResponseHeader(buf.freeze())
     }
 
-    /// 获取响应头的字节数组
-    pub fn bytes(&self) -> &[u8] {
-        &self.0
-    }
+    // /// 获取响应头的字节数组
+    // pub fn bytes(&self) -> &[u8] {
+    //     &self.0
+    // }
 
     /// 获取响应头的字节数组长度
     pub fn len(&self) -> usize {

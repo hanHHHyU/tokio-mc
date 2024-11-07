@@ -8,7 +8,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{frame::map_error_code, header::ResponseHeader, Error};
+use crate::{header::ResponseHeader, Error};
 
 use super::{Client, Context, Request, Response};
 
@@ -22,14 +22,14 @@ pub async fn connect(socket_addr: SocketAddr) -> io::Result<Context<TcpClient>> 
 
 #[derive(Debug)]
 pub struct TcpClient {
-    stream: TcpStream, // 直接保存 TcpStream 实例
+    // stream: TcpStream, // 直接保存 TcpStream 实例
+    stream: TcpStream,
 }
 
 impl TcpClient {
     /// 创建 TcpClient 实例并建立连接
     pub async fn new(addr: SocketAddr) -> Result<Self, io::Error> {
         let stream = TcpStream::connect(addr).await?;
-        println!("Connected to {:?}", addr);
         Ok(Self { stream })
     }
 }
@@ -37,30 +37,39 @@ impl TcpClient {
 #[async_trait]
 impl Client for TcpClient {
     async fn call(&mut self, request: Request<'_>) -> Result<Response, Error> {
-        println!("Processing request: {:?}", request);
+        let request_parts: Vec<Bytes> = Vec::try_from(request.clone()).unwrap();
 
-        // 1. 将 Request 转换为 Bytes
-        let request_bytes = Bytes::try_from(request.clone()).unwrap();
+        let mut complete_response = Vec::new(); // 用于收集所有响应数据
 
-        // 2. 发送请求
-        self.stream.write_all(&request_bytes[..]).await?;
+        // println!("request_parts {:?}", request_parts.len());
 
-        // 3. 接收响应
-        let mut buffer = vec![0; 4096];
-        let n = self.stream.read(&mut buffer).await?;
+        let header_len = ResponseHeader::new().len();
 
-        // 打印接收到的数据（十六进制格式）
-        println!("接收到的数据 (十六进制):");
-        for byte in &buffer[..n] {
-            print!("{:02X} ", byte);
+        for part in request_parts {
+            // println!("Read {:?}", part);
+
+            // 1. 逐个发送 Vec<Bytes> 中的每个片段
+            self.stream.write_all(&part[..]).await?;
+
+            let mut header = vec![0; header_len];
+
+            self.stream.read_exact(&mut header).await?;
+
+            // println!("读取帧{:?}", header);
+
+            let frame_length =
+                (u16::from_le_bytes([header[header_len - 2], header[header_len - 1]])) as usize;
+            // 根据解析出的长度读取剩余帧
+            let mut buffer = vec![0; frame_length];
+            // println!("读取帧长度{}", frame_length);
+            self.stream.read_exact(&mut buffer).await?;
+
+            let response_bytes: Bytes = Bytes::copy_from_slice(&buffer);
+
+            complete_response.push(response_bytes);
         }
-        println!();
 
-        // 4. 解析响应数据，将字节缓冲区转换为 Response
-        let response_bytes: Bytes = Bytes::copy_from_slice(&buffer[..n]);
-
-        // check_response(&response_bytes)?;
-        let response = Response::try_from((response_bytes, request)).unwrap();
+        let response = Response::try_from((complete_response, request))?;
 
         Ok(response)
     }
