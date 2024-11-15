@@ -1,7 +1,8 @@
 use std::{io, net::SocketAddr};
 
 use async_trait::async_trait;
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::ByteOrder;
+use byteorder::LittleEndian;
 use bytes::Bytes;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -57,8 +58,7 @@ impl Client for TcpClient {
 
             // println!("读取帧{:?}", header);
 
-            let frame_length =
-                (u16::from_le_bytes([header[header_len - 2], header[header_len - 1]])) as usize;
+            let frame_length = LittleEndian::read_u16(&header[header_len - 2..header_len]) as usize;
             // 根据解析出的长度读取剩余帧
             let mut buffer = vec![0; frame_length];
             // println!("读取帧长度{}", frame_length);

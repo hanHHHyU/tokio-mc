@@ -6,7 +6,7 @@ use bytes::Buf;
 use crate::{
     bytes::{BufMut, Bytes, BytesMut},
     frame::*,
-    header::{RequestHeader, ResponseHeader},
+    header::RequestHeader,
     Error,
 };
 
