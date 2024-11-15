@@ -13,7 +13,7 @@ async fn main() -> Result<(), Error> {
 
     let mut context = connect(addr).await?;
     // 调用 read_bits 方法
-    let result = context.read_bits("X0", 1000).await?;
+    let result = context.read_bits("M4206", 2).await?;
     println!("Read bits response: {:?}", result);
 
     Ok(())

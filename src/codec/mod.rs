@@ -21,9 +21,11 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
 
         // 获取通用的地址、代码和进制数
         let (address, quantity_or_len) = match req {
-            ReadBits(ref address, quantity) | ReadWords(ref address, quantity) => {
-                (address.clone(), quantity)
+            ReadBits(ref address, quantity) => {
+                let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u16;
+                (address.clone(), adjusted_quantity)
             }
+            ReadWords(ref address, quantity) => (address.clone(), quantity),
             WriteMultipleBits(ref address, ref bits) => {
                 (address.clone(), bits.len().try_into().unwrap())
             }
@@ -72,26 +74,27 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
             // data.extend_from_slice(&byte[header.len()..]);
             data.extend_from_slice(&byte[2..]);
         }
-
         // 处理 data 中的累积数据
         let mut final_rdr = Cursor::new(data);
 
         // 根据请求类型解析响应数据
         match req {
             Request::ReadBits(_, quantity) => {
-                let mut bits = Vec::with_capacity(quantity as usize * 2);
-                while bits.len() < quantity as usize && final_rdr.remaining() > 0 {
-                    let byte = final_rdr.get_u8();
-
-                    // 直接解析高 4 位和低 4 位为布尔值，并添加到 bits 中
-                    bits.push((byte >> 4) & 1 != 0);
-                    if bits.len() < quantity as usize {
-                        bits.push((byte & 1) != 0);
-                    }
-                }
-
+                let total_bits = quantity as usize;
+                let data = final_rdr.get_ref();
+            
+                // 使用迭代器生成 bits 向量
+                let bits: Vec<bool> = (0..total_bits)
+                    .map(|i| {
+                        let byte_index = i / 8;
+                        let bit_index = i % 8;
+                        // 提取当前位的布尔值
+                        (data[byte_index] >> bit_index) & 1 == 1
+                    })
+                    .collect();
+            
                 Ok(Response::ReadBits(bits))
-            }
+            }       
             Request::ReadWords(_, quantity) => {
                 let mut words = Vec::with_capacity(quantity as usize);
                 for _ in 0..quantity {
