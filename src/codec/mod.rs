@@ -81,14 +81,29 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
             data.put_slice(&req.function_code().value());
             request_command(&mut data, current_address, code, len);
 
+            println!("读取处理长度 {:?}", len*2);
+
             // 写入数据部分
-            if let Some(_) = write_cursor {
-                for _ in 0..len * 2 {
-                    if let Some(value) = write_iter.next() {
-                        data.put_u8(value); // 将每个字节放入数据块
+            if let Some(write_cursor) = &write_cursor {
+                match write_cursor {
+                    WriteCursor::Bits(_) => {
+                        for _ in 0..((len as f64 / 2.0).ceil() as u16) {
+                            if let Some(value) = write_iter.next() {
+                                data.put_u8(value); // 将每个字节放入数据块
+                            }
+                        }
+                    }
+                    WriteCursor::Words(_) => {
+                        // Words 类型，长度处理为 len / 2
+                        for _ in 0..len *2 {
+                            if let Some(value) = write_iter.next() {
+                                data.put_u8(value); // 将每个字节放入数据块
+                            }
+                        }
                     }
                 }
             }
+
 
             let length = (data.len() - header.len() + 2) as u16;
 
@@ -154,34 +169,6 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
             }
             Request::WriteMultipleBits(_, _) => Ok(Response::WriteMultipleBits()),
             Request::WriteMultipleWords(_, _) => Ok(Response::WriteMultipleWords()),
-        }
-    }
-}
-
-use std::borrow::Cow;
-
-fn prepare_request_data<'a>(
-    req: &Request<'a>,
-) -> Result<(Cow<'a, str>, u16, Option<impl Iterator<Item = u8>>), Error> {
-    use crate::frame::Request::*;
-    match req {
-        ReadBits(address, quantity) => {
-            let adjusted_quantity = ((quantity + 15) / 16) as u16;
-            Ok((address.clone(), adjusted_quantity, None))
-        }
-        ReadWords(address, quantity) => Ok((address.clone(), *quantity, None)),
-        WriteMultipleBits(address, bits) => Ok((
-            address.clone(),
-            bits.len().try_into().unwrap(),
-            Some(bools_to_bytes(bits).into_iter()),
-        )),
-        WriteMultipleWords(address, words) => {
-            let bytes: Vec<u8> = words.iter().flat_map(|&word| word.to_le_bytes()).collect();
-            Ok((
-                address.clone(),
-                words.len().try_into().unwrap(),
-                Some(bytes.into_iter()), // 确保返回的是 IntoIter<u8>
-            ))
         }
     }
 }

@@ -32,3 +32,9 @@ pub enum WriteCursor<'a> {
     Bits(Cursor<Cow<'a, [Bit]>>),
     Words(Cursor<Cow<'a, [Word]>>),
 }
+
+
+pub enum WriteData {
+    Bits(Vec<u8>),  // 按位存储的字节数组
+    Words(Vec<u8>), // 按字存储的小端字节数组
+}
