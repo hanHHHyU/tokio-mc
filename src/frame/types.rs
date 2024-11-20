@@ -1,3 +1,5 @@
+use std::{borrow::Cow, io::Cursor};
+
 pub(crate) type Bit = bool;
 
 pub(crate) type Word = u16;
@@ -24,4 +26,9 @@ pub enum NumberBase {
 pub struct PlcInstruction {
     pub(crate) code: u8,
     pub(crate) number_base: NumberBase,
+}
+
+pub enum WriteCursor<'a> {
+    Bits(Cursor<Cow<'a, [Bit]>>),
+    Words(Cursor<Cow<'a, [Word]>>),
 }

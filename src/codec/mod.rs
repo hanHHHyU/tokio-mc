@@ -1,7 +1,6 @@
 use std::{convert::TryFrom, io::Cursor};
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt as _};
-use bytes::Buf;
 
 use crate::{
     bytes::{BufMut, Bytes, BytesMut},
@@ -17,22 +16,35 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
     fn try_from(req: Request<'a>) -> Result<Vec<Bytes>, Error> {
         use crate::frame::Request::*;
         let header = RequestHeader::new();
-        let cnt = request_byte_count(&req, header.len());
+        let cnt: usize = request_byte_count(&req, header.len());
 
         // 获取通用的地址、代码和进制数
-        let (address, quantity_or_len) = match req {
+        let (address, quantity_or_len, write_cursor) = match req {
             ReadBits(ref address, quantity) => {
                 let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u16;
-                (address.clone(), adjusted_quantity)
+                (address.clone(), adjusted_quantity, None)
             }
-            ReadWords(ref address, quantity) => (address.clone(), quantity),
+            ReadWords(ref address, quantity) => (address.clone(), quantity, None),
             WriteMultipleBits(ref address, ref bits) => {
-                (address.clone(), bits.len().try_into().unwrap())
+                let cursor = Cursor::new(bits.clone()); // 转换为 Cursor::new
+                (
+                    address.clone(),
+                    bits.len().try_into().unwrap(),
+                    Some(WriteCursor::Bits(cursor)),
+                )
             }
             WriteMultipleWords(ref address, ref words) => {
-                (address.clone(), words.len().try_into().unwrap())
+                let cursor = Cursor::new(words.clone()); // 转换为 Cursor::new
+                (
+                    address.clone(),
+                    words.len().try_into().unwrap(),
+                    Some(WriteCursor::Words(cursor)),
+                )
             }
         };
+
+        // // 获取地址、数量和写入数据
+        // let (address, quantity_or_len, write_iter) = prepare_request_data(&req)?;
 
         let mut results = Vec::new();
 
@@ -42,17 +54,52 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
 
         let mut current_address = u32_number;
 
+        // 如果有写入操作的 Cursor，则处理它
+        let mut write_iter = match write_cursor {
+            Some(WriteCursor::Bits(ref cursor)) => {
+                // 使用 bools_to_bytes 转换布尔数组为字节数组
+                let bytes = bools_to_bytes(cursor.get_ref());
+                bytes.into_iter()
+            }
+            Some(WriteCursor::Words(ref cursor)) => {
+                let mut bytes = Vec::with_capacity((cursor.get_ref().len() * 2) as usize);
+                // 遍历 cursor 的内容，将每个 u16 转换为小端字节序
+                for &word in cursor.get_ref().iter() {
+                    bytes.extend_from_slice(&word.to_le_bytes());
+                }
+                bytes.into_iter()
+            }
+            None => vec![].into_iter(),
+        };
+
+        let header = RequestHeader::new();
+
         while current_len > 0 {
             let len = current_len.min(LIMIT);
             let mut data = BytesMut::with_capacity(cnt);
             data.put_slice(header.bytes());
             data.put_slice(&req.function_code().value());
             request_command(&mut data, current_address, code, len);
+
+            // 写入数据部分
+            if let Some(_) = write_cursor {
+                for _ in 0..len * 2 {
+                    if let Some(value) = write_iter.next() {
+                        data.put_u8(value); // 将每个字节放入数据块
+                    }
+                }
+            }
+
+            let length = (data.len() - header.len() + 2) as u16;
+
+            // 使用 LittleEndian 的 `write_u16` 方法
+            LittleEndian::write_u16(&mut data[header.len() - 4..header.len() - 2], length);
+
             current_address += len as u32;
             current_len = current_len.saturating_sub(len);
-
             results.push(data.freeze());
         }
+
         Ok(results)
     }
 }
@@ -82,7 +129,7 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
             Request::ReadBits(_, quantity) => {
                 let total_bits = quantity as usize;
                 let data = final_rdr.get_ref();
-            
+
                 // 使用迭代器生成 bits 向量
                 let bits: Vec<bool> = (0..total_bits)
                     .map(|i| {
@@ -92,9 +139,9 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
                         (data[byte_index] >> bit_index) & 1 == 1
                     })
                     .collect();
-            
+
                 Ok(Response::ReadBits(bits))
-            }       
+            }
             Request::ReadWords(_, quantity) => {
                 let mut words = Vec::with_capacity(quantity as usize);
                 for _ in 0..quantity {
@@ -107,6 +154,34 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
             }
             Request::WriteMultipleBits(_, _) => Ok(Response::WriteMultipleBits()),
             Request::WriteMultipleWords(_, _) => Ok(Response::WriteMultipleWords()),
+        }
+    }
+}
+
+use std::borrow::Cow;
+
+fn prepare_request_data<'a>(
+    req: &Request<'a>,
+) -> Result<(Cow<'a, str>, u16, Option<impl Iterator<Item = u8>>), Error> {
+    use crate::frame::Request::*;
+    match req {
+        ReadBits(address, quantity) => {
+            let adjusted_quantity = ((quantity + 15) / 16) as u16;
+            Ok((address.clone(), adjusted_quantity, None))
+        }
+        ReadWords(address, quantity) => Ok((address.clone(), *quantity, None)),
+        WriteMultipleBits(address, bits) => Ok((
+            address.clone(),
+            bits.len().try_into().unwrap(),
+            Some(bools_to_bytes(bits).into_iter()),
+        )),
+        WriteMultipleWords(address, words) => {
+            let bytes: Vec<u8> = words.iter().flat_map(|&word| word.to_le_bytes()).collect();
+            Ok((
+                address.clone(),
+                words.len().try_into().unwrap(),
+                Some(bytes.into_iter()), // 确保返回的是 IntoIter<u8>
+            ))
         }
     }
 }
@@ -152,135 +227,225 @@ fn check_response(response_bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn bools_to_bytes(bools: &[bool]) -> Vec<u8> {
+    bools
+        .chunks(2)
+        .map(|chunk| {
+            // 判断布尔数组的长度，对每个chunk进行处理
+            if chunk.len() == 2 {
+                // 如果chunk长度为2，正常处理
+                (chunk[0] as u8) << 4 | (chunk[1] as u8)
+            } else {
+                // 如果chunk长度为1（即数组长度为奇数，最后剩余一个布尔值）
+                (chunk[0] as u8) << 4
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::Bytes;
     use std::convert::TryFrom;
 
-    // #[test]
-    // fn test_read_bits_to_bytes() {
-    //     // 构造一个 ReadBits 请求
-    //     let request = Request::ReadBits("X0".to_owned().into(), 10);
+    #[test]
+    fn test_read_bits_to_bytes() {
+        // 构造一个 ReadBits 请求
+        let request = Request::ReadBits("X0".to_owned().into(), 10);
 
-    //     // 调用 try_from，尝试将 Request 转换为 Bytes
-    //     let result = Bytes::try_from(request);
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request);
 
-    //     // 验证转换成功
-    //     assert!(result.is_ok());
+        // 验证转换成功
+        assert!(result.is_ok());
 
-    //     // 获取转换后的字节数据
-    //     let bytes = result.unwrap();
+        // 获取转换后的字节数据
+        let bytes = result.unwrap();
 
-    //     // 预期的字节数据，手动计算的结果
-    //     let expected_bytes = vec![
-    //         0x50, 0x00, // 3E 00 为MC协议的固定头
-    //         0x00, // 00(网路编号) ：上位访问下位，固定00；
-    //         0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
-    //         0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
-    //         0x00, // 00(目标模块站号) ：上位访问下位，固定00；
-    //         0x0C, 0x00, // 0x0C 为请求数据的长度
-    //         0x10, 0x00, //
-    //         0x01, 0x04, // 01 04 为读取命令
-    //         0x01, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
-    //         0x00, 0x00, 0x00, // 起始地址 50
-    //         0x9C, // 软元件代码9C为X为软元件代码
-    //         0x0A, 0x00, // 读取的软元件点数
-    //     ];
+        // 检查返回的字节向量是否符合预期
+        assert_eq!(bytes.len(), 1); // 假设一次循环能处理 32 个字节
 
-    //     // 比较生成的字节与预期结果是否相等
-    //     assert_eq!(bytes.as_ref(), expected_bytes.as_slice());
-    // }
+        // 预期的字节数据，手动计算的结果
+        let expected_bytes = vec![
+            // 0x50, 0x00, // 3E 00 为MC协议的固定头
+            0x00, // 00(网路编号) ：上位访问下位，固定00；
+            0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
+            0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
+            0x00, // 00(目标模块站号) ：上位访问下位，固定00；
+            0x0C, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //
+            0x01, 0x04, // 01 04 为读取命令
+            0x00, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
+            0x00, 0x00, 0x00, // 起始地址 50
+            0x9C, // 软元件代码9C为X为软元件代码
+            0x01, 0x00, // 读取的软元件点数
+        ];
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            bytes[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated bytes: {:?}", bytes[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
 
     #[test]
     fn test_read_words_to_bytes() {
         // 构造一个 ReadWords 请求
-        let request = Request::ReadWords("D0".to_owned().into(), 9000);
+        let request = Request::ReadWords("D0".to_owned().into(), 901);
 
         // 调用 try_from，尝试将 Request 转换为 Bytes
         let result = Vec::try_from(request.clone()).unwrap();
         // 验证结果是否符合预期
         assert!(!result.is_empty(), "Result should not be empty");
 
-        // // 检查生成的 Bytes 的数量是否正确
-        // // 假设 LIMIT 是你定义的分块逻辑的限制大小
-        // let expected_chunks = (20 + LIMIT - 1) / LIMIT; // 计算需要多少块
-        // assert_eq!(result.len(), expected_chunks, "Unexpected number of chunks");
+        // 检查返回的字节向量是否符合预期
+        assert_eq!(result.len(), 2); // 假设一次循环能处理 32 个字节
 
-        // 验证每个 Bytes 的结构
-        for (i, chunk) in result.iter().enumerate() {
-            println!("Chunk {}: {:?}", i, chunk);
-            // 添加对 chunk 的具体内容验证逻辑，例如 header 或数据内容
-            // 假设 `header.bytes()` 和 `req.function_code().value()` 已知
-            let header_length = RequestHeader::new().bytes().len();
-            assert!(chunk.len() >= header_length, "Chunk too short");
-        }
+        // 预期的字节数据，手动计算的结果
+        let expected1_bytes = vec![
+            // 0x50, 0x00, // 3E 00 为MC协议的固定头
+            0x00, // 00(网路编号) ：上位访问下位，固定00；
+            0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
+            0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
+            0x00, // 00(目标模块站号) ：上位访问下位，固定00；
+            0x0C, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //
+            0x01, 0x04, // 01 04 为读取命令
+            0x00, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
+            0x00, 0x00, 0x00, // 起始地址 50
+            0xA8, // 软元件代码9C为X为软元件代码
+            0x84, 0x03, // 读取的软元件点数
+        ];
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            result[0].to_vec(),
+            expected1_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated bytes: {:?}", result[0].to_vec());
+        println!("Expected bytes: {:?}", expected1_bytes);
+
+        // 预期的字节数据，手动计算的结果
+        let expected2_bytes = vec![
+            // 0x50, 0x00, // 3E 00 为MC协议的固定头
+            0x00, // 00(网路编号) ：上位访问下位，固定00；
+            0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
+            0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
+            0x00, // 00(目标模块站号) ：上位访问下位，固定00；
+            0x0C, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //
+            0x01, 0x04, // 01 04 为读取命令
+            0x00, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
+            0x84, 0x03, 0x00, // 起始地址 50
+            0xA8, // 软元件代码9C为X为软元件代码
+            0x01, 0x00, // 读取的软元件点数
+        ];
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            result[1].to_vec(),
+            expected2_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated2 bytes: {:?}", result[1].to_vec());
+        println!("Expected2 bytes: {:?}", expected2_bytes);
     }
 
-    // #[test]
-    // fn test_write_bit_to_bytes() {
-    //     // 构造一个 ReadBits 请求
-    //     let request = Request::WriteMultipleBits(
-    //         0,
-    //         vec![true, false, true, true, true].into(),
-    //         SoftElementCode::X,
-    //     );
+    #[test]
+    fn test_write_bit_to_bytes() {
+        // 构造一个 ReadBits 请求
+        let request = Request::WriteMultipleBits(
+            "X0".to_owned().into(),
+            vec![true, false, true, true, true].into(),
+        );
 
-    //     // 调用 try_from，尝试将 Request 转换为 Bytes
-    //     let result = Bytes::try_from(request);
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request.clone()).unwrap();
 
-    //     // 验证转换成功
-    //     assert!(result.is_ok());
+        // 验证结果是否符合预期
+        assert!(!result.is_empty(), "Result should not be empty");
 
-    //     // 获取转换后的字节数据
-    //     let bytes = result.unwrap();
+        // 预期的字节数据，手动计算的结果
+        let expected_bytes = vec![
+            // 0x50, 0x00, // 3E 00 为MC协议的固定头
+            0x00, // 00(网路编号) ：上位访问下位，固定00；
+            0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
+            0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
+            0x00, // 00(目标模块站号) ：上位访问下位，固定00；
+            0x0F, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //
+            0x01, 0x14, // 01 04 为读取命令
+            0x01, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
+            0x00, 0x00, 0x00, // 起始地址 50
+            0x9C, // 软元件代码9C为X为软元件代码
+            0x05, 0x00, // 读取的软元件点数
+            0x10, 0x11, 0x10,
+        ];
 
-    //     // 预期的字节数据，手动计算的结果
-    //     let expected_bytes = vec![
-    //         0x50, 0x00, // 3E 00 为MC协议的固定头
-    //         0x00, // 00(网路编号) ：上位访问下位，固定00；
-    //         0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
-    //         0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
-    //         0x00, // 00(目标模块站号) ：上位访问下位，固定00；
-    //         0x0F, 0x00, // 0x0C 为请求数据的长度
-    //         0x10, 0x00, //
-    //         0x01, 0x14, // 01 04 为读取命令
-    //         0x01, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
-    //         0x00, 0x00, 0x00, // 起始地址 50
-    //         0x9C, // 软元件代码9C为X为软元件代码
-    //         0x05, 0x00, // 读取的软元件点数
-    //         0x10, 0x11, 0x10,
-    //     ];
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            result[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
 
-    //     // 比较生成的字节与预期结果是否相等
-    //     assert_eq!(bytes.as_ref(), expected_bytes.as_slice());
-    // }
+        // 打印调试信息
+        println!("Generated bytes: {:?}", result[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
 
-    // #[test]
-    // fn test_write_words_to_bytes() {
-    //     // 构造一个 ReadWords 请求
-    //     let request =
-    //         Request::WriteMultipleWords(0x654321, vec![1, 2, 3, 4, 5].into(), SoftElementCode::D);
+    #[test]
+    fn test_write_words_to_bytes() {
+        // 构造一个 ReadWords 请求
+        let request =
+            Request::WriteMultipleWords("D0".to_owned().into(), vec![1, 2, 3, 4, 5].into());
 
-    //     // 调用 try_from，尝试将 Request 转换为 Bytes
-    //     let result = Bytes::try_from(request);
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request.clone()).unwrap();
 
-    //     // 验证转换成功
-    //     assert!(result.is_ok());
+        // 预期的字节数据，手动计算的结果
+        let expected_bytes = vec![
+            // 0x50, 0x00,
+            0x00, 0xFF, 0xFF, 0x03, 0x00, 0x16, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //, 0x00, 0x01,
+            0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA8, 0x05, 0x00, 0x01, 0x00, 0x02, 0x00,
+            0x03, 0x00, 0x04, 0x00, 0x05, 0x00,
+        ];
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            result[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
 
-    //     // 获取转换后的字节数据
-    //     let bytes = result.unwrap();
+        // 打印调试信息
+        println!("Generated bytes: {:?}", result[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
 
-    //     // 预期的字节数据，手动计算的结果
-    //     let expected_bytes = vec![
-    //         0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x16,
-    //         0x00, // 0x0C 为请求数据的长度
-    //         0x10, 0x00, //, 0x00, 0x01,
-    //         0x01, 0x14, 0x00, 0x00, 0x21, 0x43, 0x65, 0xA8, 0x05, 0x00, 0x01, 0x00, 0x02, 0x00,
-    //         0x03, 0x00, 0x04, 0x00, 0x05, 0x00,
-    //     ];
+    #[test]
+    fn test_bools_to_packed_bytes() {
+        let bits = vec![true, false, true, true, true];
+        let result = bools_to_bytes(&bits);
 
-    //     // 比较生成的字节与预期结果是否相等
-    //     assert_eq!(bytes.as_ref(), expected_bytes.as_slice());
-    // }
+        // 打印为十六进制格式
+        print!("Result in hex: [");
+        for (i, byte) in result.iter().enumerate() {
+            if i > 0 {
+                print!(", ");
+            }
+            print!("0x{:02X}", byte); // 使用 `:02X` 确保补齐两位大写十六进制
+        }
+        println!("]");
+    }
 }

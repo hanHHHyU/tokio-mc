@@ -43,8 +43,11 @@ impl ResponseHeader {
         let mut buf = BytesMut::new();
 
         // 写入固定的头部
-        buf.put_u8(0xD0); // 3E 协议头
-        buf.put_u8(0x00); // 固定 00
+        // buf.put_u8(0xD0); // 3E 协议头
+        // buf.put_u8(0x00); // 固定 00
+        // 写入固定的头部
+        #[cfg(feature = "3e")]
+        buf.put_u16_le(0x00D0); // 3E 协议头
         buf.put_u8(0x00); // 网络编号，固定 00
         buf.put_u8(0xFF); // PLC 编号，固定 FF
         buf.put_u16_le(0x03FF); // 目标模块 IO 编号
