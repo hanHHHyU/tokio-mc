@@ -81,12 +81,14 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
             data.put_slice(&req.function_code().value());
             request_command(&mut data, current_address, code, len);
 
-            println!("读取处理长度 {:?}", len*2);
+            // println!("读取处理长度 {:?}", len * 2);
 
             // 写入数据部分
             if let Some(write_cursor) = &write_cursor {
                 match write_cursor {
                     WriteCursor::Bits(_) => {
+                        println!("{}", ((len as f64) / 2.0).ceil() as u16);
+
                         for _ in 0..((len as f64 / 2.0).ceil() as u16) {
                             if let Some(value) = write_iter.next() {
                                 data.put_u8(value); // 将每个字节放入数据块
@@ -95,7 +97,7 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
                     }
                     WriteCursor::Words(_) => {
                         // Words 类型，长度处理为 len / 2
-                        for _ in 0..len *2 {
+                        for _ in 0..len * 2 {
                             if let Some(value) = write_iter.next() {
                                 data.put_u8(value); // 将每个字节放入数据块
                             }
@@ -103,7 +105,6 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
                     }
                 }
             }
-
 
             let length = (data.len() - header.len() + 2) as u16;
 
