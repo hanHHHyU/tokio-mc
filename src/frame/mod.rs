@@ -8,6 +8,7 @@ pub use types::*;
 use crate::bytes::BytesMut;
 
 mod error;
+mod kv;
 mod map;
 mod regex;
 mod types;
@@ -16,6 +17,10 @@ pub use error::{map_error_code, ProtocolError};
 
 pub use map::{convert_to_base, find_instruction_code};
 pub use regex::split_address;
+
+pub use kv::convert_keyence_to_mitsubishi_address;
+
+pub use kv::KVError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCode {

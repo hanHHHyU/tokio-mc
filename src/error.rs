@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::frame::ProtocolError;
+use crate::frame::{KVError, ProtocolError};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -8,4 +8,7 @@ pub enum Error {
     Protocol(#[from] ProtocolError), // 将 ProtocolError 包装为 Protocol 错误
     #[error(transparent)]
     Transport(#[from] std::io::Error),
+
+    #[error("Keyence-specific error: {0}")]
+    KV(#[from] KVError),
 }

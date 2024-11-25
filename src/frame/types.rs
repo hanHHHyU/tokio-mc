@@ -42,3 +42,16 @@ pub enum WriteData {
     Bits(Vec<u8>),  // 按位存储的字节数组
     Words(Vec<u8>), // 按字存储的小端字节数组
 }
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum Model {
+    Mitsubishi,
+    Keyence
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Model::Mitsubishi
+    }
+}

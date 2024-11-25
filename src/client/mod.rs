@@ -41,11 +41,39 @@ pub trait Writer: Client {
 #[derive(Debug)]
 pub struct Context<T: Client> {
     client: T,
+    model: Model, // 新增字段
 }
 
 impl<T: Client> Context<T> {
     pub fn new(client: T) -> Self {
-        Self { client }
+        Self {
+            client,
+            model: Model::default(), // 使用默认值
+        }
+    }
+
+    /// 设置 PLC 型号
+    pub fn set_plc_model(&mut self, model: Model) {
+        self.model = model;
+    }
+
+    fn process_address<A>(&self, addr: &A) -> Result<String,Error> 
+    where
+        A: AsRef<str> + ?Sized,
+    {
+        match self.model {
+            Model::Keyence => {
+                // 调用地址转换方法
+                match convert_keyence_to_mitsubishi_address(addr.as_ref()) {
+                    Ok(converted_addr) => Ok(converted_addr),
+                    Err(e) => Err(Error::KV(e)), 
+                }
+            }
+            Model::Mitsubishi => {
+                // Mitsubishi 不进行处理，直接返回地址
+                Ok(addr.as_ref().to_string())
+            }
+        }
     }
 }
 
@@ -62,10 +90,13 @@ impl<T: Client> Reader for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
+        // 根据 plc_model 处理地址
+        let addr = self.process_address(addr)?;
+
         // 1. 发出请求
         let call_result: Response = self
             .client
-            .call(Request::ReadBits(addr.as_ref().into(), cnt))
+            .call(Request::ReadBits(addr.into(), cnt))
             .await?;
 
         match call_result {
@@ -77,10 +108,13 @@ impl<T: Client> Reader for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
+        // 根据 plc_model 处理地址
+        let addr = self.process_address(addr)?;
+
         // 1. 发出请求
         let call_result = self
             .client
-            .call(Request::ReadWords(addr.as_ref().into(), cnt))
+            .call(Request::ReadWords(addr.into(), cnt))
             .await?;
         match call_result {
             Response::ReadWords(words) => Ok(words),
@@ -95,11 +129,13 @@ impl<T: Client> Writer for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
+        // 根据 plc_model 处理地址
+        let addr = self.process_address(addr)?;
         // 1. 发出请求
         let call_result = self
             .client
             .call(Request::WriteMultipleBits(
-                addr.as_ref().into(),
+                addr.into(),
                 Cow::Borrowed(bits),
             ))
             .await?;
@@ -113,11 +149,13 @@ impl<T: Client> Writer for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
+        // 根据 plc_model 处理地址
+        let addr = self.process_address(addr)?;
         // 1. 发出请求
         let call_result = self
             .client
             .call(Request::WriteMultipleWords(
-                addr.as_ref().into(),
+                addr.into(),
                 Cow::Borrowed(words),
             ))
             .await?;
