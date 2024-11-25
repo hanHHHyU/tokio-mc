@@ -1,4 +1,5 @@
-use std::{io, net::SocketAddr};
+use std::net::SocketAddr;
+use tokio::time::timeout;
 
 use async_trait::async_trait;
 use byteorder::ByteOrder;
@@ -9,11 +10,11 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{header::ResponseHeader, Error};
+use crate::{header::ResponseHeader, Error,frame::TIMEOUT_DURATION};
 
 use super::{Client, Context, Request, Response};
 
-pub async fn connect(socket_addr: SocketAddr) -> io::Result<Context<TcpClient>> {
+pub async fn connect(socket_addr: SocketAddr) -> Result<Context<TcpClient>,Error> {
     // 等待 TcpClient::new 的 Future 完成，获得 TcpClient 实例
     let tcp_client = TcpClient::new(socket_addr).await?;
     let context: Context<TcpClient> = Context::<TcpClient>::new(tcp_client);
@@ -29,7 +30,7 @@ pub struct TcpClient {
 
 impl TcpClient {
     /// 创建 TcpClient 实例并建立连接
-    pub async fn new(addr: SocketAddr) -> Result<Self, io::Error> {
+    pub async fn new(addr: SocketAddr) -> Result<Self, Error> {
         let stream = TcpStream::connect(addr).await?;
         Ok(Self { stream })
     }
@@ -54,15 +55,25 @@ impl Client for TcpClient {
 
             let mut header = vec![0; header_len];
 
-            self.stream.read_exact(&mut header).await?;
+            // self.stream.read_exact(&mut header).await?;
+             // 使用 tokio::time::timeout 设置超时
+            timeout(TIMEOUT_DURATION, self.stream.read_exact(&mut header))
+            .await
+            .map_err(|_| Error::Transport(std::io::Error::new(std::io::ErrorKind::TimedOut, "Read header timed out")))?
+            .map_err(Error::Transport)?;
 
             // println!("读取帧{:?}", header);
 
             let frame_length = LittleEndian::read_u16(&header[header_len - 2..header_len]) as usize;
             // 根据解析出的长度读取剩余帧
             let mut buffer = vec![0; frame_length];
-            // println!("读取帧长度{}", frame_length);
-            self.stream.read_exact(&mut buffer).await?;
+            // // println!("读取帧长度{}", frame_length);
+            // self.stream.read_exact(&mut buffer).await?;
+            // 对剩余帧的读取同样设置超时
+            timeout(TIMEOUT_DURATION, self.stream.read_exact(&mut buffer))
+            .await
+            .map_err(|_| Error::Transport(std::io::Error::new(std::io::ErrorKind::TimedOut, "Read frame timed out")))?
+            .map_err(Error::Transport)?;
 
             let response_bytes: Bytes = Bytes::copy_from_slice(&buffer);
 

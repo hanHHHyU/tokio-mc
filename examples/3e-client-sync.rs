@@ -6,10 +6,10 @@ fn main() -> Result<(), Error> {
     // 传递 TcpClient 实例来初始化同步 Context
     let mut context = tcp::connect(addr)?;
 
-    let words: Vec<u16> = vec![10];
-    let _ = context.write_multiple_words("D0", &words)?;
+    // let words: Vec<u16> = vec![10];
+    // let _ = context.write_multiple_words("D0", &words)?;
 
-    // let read_result = context.read_words("D0", 9000)?;
-    // println!("Read words response: {:?}", read_result);
+    let read_result = context.read_words("D0", 9000)?;
+    println!("Read words response: {:?}", read_result);
     Ok(())
 }
