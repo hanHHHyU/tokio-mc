@@ -3,6 +3,8 @@ name = "tokio-mc"
 version = "0.1.0"
 edition = "2021"
 authors = ["YuhanCai <1046365096@qq.com>"]
+description = "A library for communication with PLCs using the MC protocol"
+license = "MIT"  
 
 [dependencies]
 async-trait = "0.1.77"
