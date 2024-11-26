@@ -80,6 +80,12 @@ impl<T: AsyncClient> Context<T> {
             timeout,
         }
     }
+
+    pub fn set_plc_model(&mut self, model: Model) {
+        // 将模型传递给异步上下文
+        self.async_ctx.set_plc_model(model);
+    }
+
 }
 
 impl<T: AsyncClient> Client for Context<T> {
