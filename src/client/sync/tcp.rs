@@ -1,10 +1,11 @@
-use std::{io, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use crate::client::tcp::TcpClient;
 
 use super::Context;
+use crate::Error;
 
-pub fn connect(socket_addr: SocketAddr) -> io::Result<Context<TcpClient>>  {
+pub fn connect(socket_addr: SocketAddr) -> Result<Context<TcpClient>, Error> {
     // 创建一个新的 Tokio 运行时
     let runtime = tokio::runtime::Runtime::new()?;
     // 通过运行时创建异步 TcpClient
