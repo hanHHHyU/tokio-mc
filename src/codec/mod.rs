@@ -21,7 +21,7 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
         // 获取通用的地址、代码和进制数
         let (address, quantity_or_len, write_cursor) = match req {
             ReadBits(ref address, quantity) => {
-                let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u16;
+                let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u32;
                 (address.clone(), adjusted_quantity, None)
             }
             ReadWords(ref address, quantity) => (address.clone(), quantity, None),
@@ -75,7 +75,7 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
         let header = RequestHeader::new();
 
         while current_len > 0 {
-            let len = current_len.min(LIMIT);
+            let len = current_len.min(LIMIT) as u16;
             let mut data = BytesMut::with_capacity(cnt);
             data.put_slice(header.bytes());
             data.put_slice(&req.function_code().value());
@@ -112,7 +112,7 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
             LittleEndian::write_u16(&mut data[header.len() - 4..header.len() - 2], length);
 
             current_address += len as u32;
-            current_len = current_len.saturating_sub(len);
+            current_len = current_len.saturating_sub(len as u32);
             results.push(data.freeze());
         }
 
