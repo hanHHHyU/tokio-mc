@@ -20,12 +20,12 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
 
         // 获取通用的地址、代码和进制数
         let (address, quantity_or_len, write_cursor) = match req {
-            ReadBits(ref address, quantity) => {
+            ReadBools(ref address, quantity) => {
                 let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u32;
                 (address.clone(), adjusted_quantity, None)
             }
-            ReadWords(ref address, quantity) => (address.clone(), quantity, None),
-            WriteMultipleBits(ref address, ref bits) => {
+            ReadU16s(ref address, quantity) => (address.clone(), quantity, None),
+            WriteBools(ref address, ref bits) => {
                 let cursor = Cursor::new(bits.clone()); // 转换为 Cursor::new
                 (
                     address.clone(),
@@ -33,7 +33,7 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
                     Some(WriteCursor::Bits(cursor)),
                 )
             }
-            WriteMultipleWords(ref address, ref words) => {
+            WriteU16s(ref address, ref words) => {
                 let cursor = Cursor::new(words.clone()); // 转换为 Cursor::new
                 (
                     address.clone(),
@@ -142,7 +142,7 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
 
         // 根据请求类型解析响应数据
         match req {
-            Request::ReadBits(_, quantity) => {
+            Request::ReadBools(_, quantity) => {
                 let total_bits = quantity as usize;
                 let data = final_rdr.get_ref();
 
@@ -156,9 +156,9 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
                     })
                     .collect();
 
-                Ok(Response::ReadBits(bits))
+                Ok(Response::ReadBools(bits))
             }
-            Request::ReadWords(_, quantity) => {
+            Request::ReadU16s(_, quantity) => {
                 let mut words = Vec::with_capacity(quantity as usize);
                 for _ in 0..quantity {
                     // 读取小端字节序的 u16 值并放入 words 向量g
@@ -166,10 +166,10 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
                     words.push(word);
                 }
 
-                Ok(Response::ReadWords(words))
+                Ok(Response::ReadU16s(words))
             }
-            Request::WriteMultipleBits(_, _) => Ok(Response::WriteMultipleBits()),
-            Request::WriteMultipleWords(_, _) => Ok(Response::WriteMultipleWords()),
+            Request::WriteBools(_, _) => Ok(Response::WriteBools()),
+            Request::WriteU16s(_, _) => Ok(Response::WriteU16s()),
         }
     }
 }
@@ -177,9 +177,9 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
 fn request_byte_count(req: &Request<'_>, header_len: usize) -> usize {
     use crate::frame::Request::*;
     match *req {
-        ReadBits(_, _) | ReadWords(_, _) => header_len + REQUEST_BYTE_LAST_LEN,
-        WriteMultipleBits(_, ref bits) => header_len + REQUEST_BYTE_LAST_LEN + (bits.len() + 1) / 2,
-        WriteMultipleWords(_, ref words) => header_len + REQUEST_BYTE_LAST_LEN + words.len() * 2,
+        ReadBools(_, _) | ReadU16s(_, _) => header_len + REQUEST_BYTE_LAST_LEN,
+        WriteBools(_, ref bits) => header_len + REQUEST_BYTE_LAST_LEN + (bits.len() + 1) / 2,
+        WriteU16s(_, ref words) => header_len + REQUEST_BYTE_LAST_LEN + words.len() * 2,
     }
 }
 
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn test_read_bits_to_bytes() {
         // 构造一个 ReadBits 请求
-        let request = Request::ReadBits("X0".to_owned().into(), 10);
+        let request = Request::ReadBools("X0".to_owned().into(), 10);
 
         // 调用 try_from，尝试将 Request 转换为 Bytes
         let result = Vec::try_from(request);
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn test_read_words_to_bytes() {
         // 构造一个 ReadWords 请求
-        let request = Request::ReadWords("D0".to_owned().into(), 901);
+        let request = Request::ReadU16s("D0".to_owned().into(), 901);
 
         // 调用 try_from，尝试将 Request 转换为 Bytes
         let result = Vec::try_from(request.clone()).unwrap();
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_write_bit_to_bytes() {
         // 构造一个 ReadBits 请求
-        let request = Request::WriteMultipleBits(
+        let request = Request::WriteBools(
             "X0".to_owned().into(),
             vec![true, false, true, true, true].into(),
         );
@@ -396,7 +396,7 @@ mod tests {
     fn test_write_words_to_bytes() {
         // 构造一个 ReadWords 请求
         let request =
-            Request::WriteMultipleWords("D0".to_owned().into(), vec![1, 2, 3, 4, 5].into());
+            Request::WriteU16s("D0".to_owned().into(), vec![1, 2, 3, 4, 5].into());
 
         // 调用 try_from，尝试将 Request 转换为 Bytes
         let result = Vec::try_from(request.clone()).unwrap();

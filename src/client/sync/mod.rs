@@ -42,21 +42,21 @@ pub trait Client {
 }
 
 pub trait Reader: Client {
-    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
+    fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
+    fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 pub trait Writer: Client {
-    fn write_multiple_bits<A>(&mut self, addr: &A, bits: &'_ [Bit]) -> Result<(), Error>
+    fn write_bools<A>(&mut self, addr: &A, bits: &'_ [Bit]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn write_multiple_words<A>(&mut self, addr: &A, words: &'_ [Word]) -> Result<(), Error>
+    fn write_u16s<A>(&mut self, addr: &A, words: &'_ [Word]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -95,49 +95,49 @@ impl<T: AsyncClient> Client for Context<T> {
 }
 
 impl<T: AsyncClient> Reader for Context<T> {
-    fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
+    fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.read_bits(addr, cnt),
+            self.async_ctx.read_bools(addr, cnt),
         )
     }
 
-    fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
+    fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.read_words(addr, cnt),
+            self.async_ctx.read_u16s(addr, cnt),
         )
     }
 }
 
 impl<T: AsyncClient> Writer for Context<T> {
-    fn write_multiple_bits<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    fn write_bools<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.write_multiple_bits(addr, bits),
+            self.async_ctx.write_bools(addr, bits),
         )
     }
 
-    fn write_multiple_words<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    fn write_u16s<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.write_multiple_words(addr, words),
+            self.async_ctx.write_u16s(addr, words),
         )
     }
 }

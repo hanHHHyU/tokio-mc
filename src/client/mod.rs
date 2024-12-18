@@ -17,22 +17,22 @@ pub trait Client: Send + Debug {
 
 #[async_trait]
 pub trait Reader: Client {
-    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
+    async fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<bool>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
+    async fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u16>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 #[async_trait]
 pub trait Writer: Client {
-    async fn write_multiple_bits<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    async fn write_bools<A>(&mut self, addr: &A, bits: &[bool]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn write_multiple_words<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    async fn write_u16s<A>(&mut self, addr: &A, words: &[u16]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -57,7 +57,7 @@ impl<T: Client> Context<T> {
         self.model = model;
     }
 
-    fn process_address<A>(&self, addr: &A) -> Result<String,Error> 
+    fn process_address<A>(&self, addr: &A) -> Result<String, Error>
     where
         A: AsRef<str> + ?Sized,
     {
@@ -66,7 +66,7 @@ impl<T: Client> Context<T> {
                 // 调用地址转换方法
                 match convert_keyence_to_mitsubishi_address(addr.as_ref()) {
                     Ok(converted_addr) => Ok(converted_addr),
-                    Err(e) => Err(Error::KV(e)), 
+                    Err(e) => Err(Error::KV(e)),
                 }
             }
             Model::Mitsubishi => {
@@ -86,7 +86,7 @@ impl<T: Client> Client for Context<T> {
 
 #[async_trait]
 impl<T: Client> Reader for Context<T> {
-    async fn read_bits<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
+    async fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<bool>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -96,15 +96,15 @@ impl<T: Client> Reader for Context<T> {
         // 1. 发出请求
         let call_result: Response = self
             .client
-            .call(Request::ReadBits(addr.into(), cnt))
+            .call(Request::ReadBools(addr.into(), cnt))
             .await?;
 
         match call_result {
-            Response::ReadBits(bits) => Ok(bits),
+            Response::ReadBools(bits) => Ok(bits),
             _ => unreachable!("Only ReadBits responses are expected"),
         }
     }
-    async fn read_words<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
+    async fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u16>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -114,10 +114,10 @@ impl<T: Client> Reader for Context<T> {
         // 1. 发出请求
         let call_result = self
             .client
-            .call(Request::ReadWords(addr.into(), cnt))
+            .call(Request::ReadU16s(addr.into(), cnt))
             .await?;
         match call_result {
-            Response::ReadWords(words) => Ok(words),
+            Response::ReadU16s(words) => Ok(words),
             _ => unreachable!("Only ReadBits responses are expected"),
         }
     }
@@ -125,7 +125,7 @@ impl<T: Client> Reader for Context<T> {
 
 #[async_trait]
 impl<T: Client> Writer for Context<T> {
-    async fn write_multiple_bits<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    async fn write_bools<A>(&mut self, addr: &A, bits: &[bool]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -134,18 +134,15 @@ impl<T: Client> Writer for Context<T> {
         // 1. 发出请求
         let call_result = self
             .client
-            .call(Request::WriteMultipleBits(
-                addr.into(),
-                Cow::Borrowed(bits),
-            ))
+            .call(Request::WriteBools(addr.into(), Cow::Borrowed(bits)))
             .await?;
         match call_result {
-            Response::WriteMultipleBits() => Ok(()),
+            Response::WriteBools() => Ok(()),
             _ => unreachable!("Only ReadBits responses are expected"),
         }
     }
 
-    async fn write_multiple_words<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    async fn write_u16s<A>(&mut self, addr: &A, words: &[u16]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -154,13 +151,13 @@ impl<T: Client> Writer for Context<T> {
         // 1. 发出请求
         let call_result = self
             .client
-            .call(Request::WriteMultipleWords(
+            .call(Request::WriteU16s(
                 addr.into(),
                 Cow::Borrowed(words),
             ))
             .await?;
         match call_result {
-            Response::WriteMultipleWords() => Ok(()),
+            Response::WriteU16s() => Ok(()),
             _ => unreachable!("Only ReadBits responses are expected"),
         }
     }
@@ -239,7 +236,7 @@ mod tests {
     //     let addr = 0x0001; // 示例地址
     //     let cnt = 4; // 请求 4 个线圈状态
     //     let code = crate::frame::SoftElementCode::X;
-    //     let result = block_on(context.read_bits(addr, cnt, code));
+    //     let result = block_on(context.read_bools(addr, cnt, code));
 
     //     // 验证请求和响应
     //     assert!(result.is_ok());

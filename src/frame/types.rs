@@ -1,10 +1,6 @@
 use std::{borrow::Cow, io::Cursor};
 use tokio::time::Duration;
 
-pub(crate) type Bit = bool;
-
-pub(crate) type Word = u16;
-
 pub type Quantity = u32;
 
 pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
@@ -33,8 +29,8 @@ pub struct PlcInstruction {
 }
 
 pub enum WriteCursor<'a> {
-    Bits(Cursor<Cow<'a, [Bit]>>),
-    Words(Cursor<Cow<'a, [Word]>>),
+    Bits(Cursor<Cow<'a, [bool]>>),
+    Words(Cursor<Cow<'a, [u16]>>),
 }
 
 

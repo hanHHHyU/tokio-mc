@@ -17,7 +17,7 @@ async fn main() -> Result<(), Error> {
     context.set_plc_model(Model::Keyence);
 
     // 调用 read_bits 方法
-    let result = context.read_bits("X117", 3).await?;
+    let result = context.read_bools("X117", 3).await?;
     println!("Read bits response: {:?}", result);
 
     Ok(())

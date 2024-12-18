@@ -24,10 +24,10 @@ pub use kv::KVError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCode {
-    ReadBits,
-    ReadWords,
-    WriteMultipleBits,
-    WriteMultipleWords,
+    ReadBools,
+    ReadU16s,
+    WriteBools,
+    WriteU16s,
 }
 
 impl FunctionCode {
@@ -35,11 +35,11 @@ impl FunctionCode {
     #[must_use]
     pub fn new(value: BytesMut) -> Option<Self> {
         match &value[..] {
-            [0x01, 0x04, 0x01, 0x00] => Some(Self::ReadBits), // 假设这对应 ReadBits
-            [0x01, 0x04, 0x00, 0x00] => Some(Self::ReadWords), // 假设这对应 ReadWords
-            [0x01, 0x14, 0x01, 0x00] => Some(Self::WriteMultipleBits), // 对应 WriteMultipleBits
-            [0x01, 0x14, 0x00, 0x00] => Some(Self::WriteMultipleWords), // 对应 WriteMultipleWords
-            _ => None,                                        // 如果字节序列不匹配，返回 None
+            [0x01, 0x04, 0x01, 0x00] => Some(Self::ReadBools), // 假设这对应 ReadBits
+            [0x01, 0x04, 0x00, 0x00] => Some(Self::ReadU16s),  // 假设这对应 ReadWords
+            [0x01, 0x14, 0x01, 0x00] => Some(Self::WriteBools), // 对应 WriteMultipleBits
+            [0x01, 0x14, 0x00, 0x00] => Some(Self::WriteU16s), // 对应 WriteMultipleWords
+            _ => None,                                         // 如果字节序列不匹配，返回 None
         }
     }
 
@@ -48,16 +48,16 @@ impl FunctionCode {
     pub fn value(self) -> BytesMut {
         let mut buf = BytesMut::new();
         match self {
-            FunctionCode::ReadBits => {
+            FunctionCode::ReadBools => {
                 buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]); // 对应 ReadBits 的字节序列
             }
-            FunctionCode::ReadWords => {
+            FunctionCode::ReadU16s => {
                 buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]); // 对应 ReadWords 的字节序列
             }
-            FunctionCode::WriteMultipleBits => {
+            FunctionCode::WriteBools => {
                 buf.extend_from_slice(&[0x01, 0x14, 0x01, 0x00]); // 对应 WriteMultipleBits 的字节序列
             }
-            FunctionCode::WriteMultipleWords => {
+            FunctionCode::WriteU16s => {
                 buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]); // 对应 WriteMultipleWords 的字节序列
             }
         }
@@ -75,10 +75,10 @@ impl Display for FunctionCode {
 // 请求的枚举，类似你给出的Modbus请求设计
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request<'a> {
-    ReadBits(Cow<'a, str>, Quantity),
-    ReadWords(Cow<'a, str>, Quantity),
-    WriteMultipleBits(Cow<'a, str>, Cow<'a, [Bit]>),
-    WriteMultipleWords(Cow<'a, str>, Cow<'a, [Word]>),
+    ReadBools(Cow<'a, str>, Quantity),
+    ReadU16s(Cow<'a, str>, Quantity),
+    WriteBools(Cow<'a, str>, Cow<'a, [bool]>),
+    WriteU16s(Cow<'a, str>, Cow<'a, [u16]>),
 }
 
 // 实现辅助功能，比如将请求转换为'owned'版本或获取功能码
@@ -88,13 +88,13 @@ impl<'a> Request<'a> {
     pub fn into_owned(self) -> Request<'static> {
         use Request::*;
         match self {
-            ReadBits(addr, qty) => ReadBits(Cow::Owned(addr.into_owned()), qty),
-            ReadWords(addr, qty) => ReadWords(Cow::Owned(addr.into_owned()), qty),
-            WriteMultipleBits(addr, coils) => WriteMultipleBits(
+            ReadBools(addr, qty) => ReadBools(Cow::Owned(addr.into_owned()), qty),
+            ReadU16s(addr, qty) => ReadU16s(Cow::Owned(addr.into_owned()), qty),
+            WriteBools(addr, coils) => WriteBools(
                 Cow::Owned(addr.into_owned()),
                 Cow::Owned(coils.into_owned()),
             ),
-            WriteMultipleWords(addr, words) => WriteMultipleWords(
+            WriteU16s(addr, words) => WriteU16s(
                 Cow::Owned(addr.into_owned()),
                 Cow::Owned(words.into_owned()),
             ),
@@ -105,22 +105,22 @@ impl<'a> Request<'a> {
     pub const fn function_code(&self) -> FunctionCode {
         use Request::*;
         match self {
-            ReadBits(_, _) => FunctionCode::ReadBits,
-            ReadWords(_, _) => FunctionCode::ReadWords,
-            WriteMultipleBits(_, _) => FunctionCode::WriteMultipleBits,
-            WriteMultipleWords(_, _) => FunctionCode::WriteMultipleWords,
+            ReadBools(_, _) => FunctionCode::ReadBools,
+            ReadU16s(_, _) => FunctionCode::ReadU16s,
+            WriteBools(_, _) => FunctionCode::WriteBools,
+            WriteU16s(_, _) => FunctionCode::WriteU16s,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
-    ReadBits(Vec<Bit>),
-    ReadWords(Vec<Word>),
+    ReadBools(Vec<bool>),
+    ReadU16s(Vec<u16>),
     // WriteMultipleBits(Address, Quantity, SoftElementCode),
     // WriteMultipleWords(Address, Quantity, SoftElementCode),
-    WriteMultipleBits(),
-    WriteMultipleWords(),
+    WriteBools(),
+    WriteU16s(),
 }
 
 impl Response {
@@ -129,12 +129,12 @@ impl Response {
         use Response::*;
 
         match self {
-            ReadBits(_) => FunctionCode::ReadBits,
-            ReadWords(_) => FunctionCode::ReadWords,
+            ReadBools(_) => FunctionCode::ReadBools,
+            ReadU16s(_) => FunctionCode::ReadU16s,
             // WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
             // WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
-            WriteMultipleBits() => FunctionCode::WriteMultipleBits,
-            WriteMultipleWords() => FunctionCode::WriteMultipleWords,
+            WriteBools() => FunctionCode::WriteBools,
+            WriteU16s() => FunctionCode::WriteU16s,
         }
     }
 }
@@ -146,24 +146,24 @@ mod tests {
     #[test]
     fn new_function_code() {
         assert_eq!(
-            FunctionCode::ReadBits,
+            FunctionCode::ReadBools,
             FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x01, 0x00][..]))
                 .expect("Failed to create FunctionCode from bytes")
         );
         assert_eq!(
-            FunctionCode::ReadWords,
+            FunctionCode::ReadU16s,
             FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]))
                 .expect("Failed to create FunctionCode from bytes")
         );
 
         assert_eq!(
-            FunctionCode::WriteMultipleBits,
+            FunctionCode::WriteBools,
             FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]))
                 .expect("Failed to create FunctionCode from bytes")
         );
 
         assert_eq!(
-            FunctionCode::WriteMultipleWords,
+            FunctionCode::WriteU16s,
             FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]))
                 .expect("Failed to create FunctionCode from bytes")
         );
@@ -178,28 +178,28 @@ mod tests {
 
         // ReadBits 测试
         assert_eq!(
-            FunctionCode::ReadBits.value(),
+            FunctionCode::ReadBools.value(),
             read_bits_bytes,
             "ReadBits byte sequence is incorrect"
         );
 
         // ReadWords 测试
         assert_eq!(
-            FunctionCode::ReadWords.value(),
+            FunctionCode::ReadU16s.value(),
             read_words_bytes,
             "ReadWords byte sequence is incorrect"
         );
 
         // WriteMultipleBits 测试
         assert_eq!(
-            FunctionCode::WriteMultipleBits.value(),
+            FunctionCode::WriteBools.value(),
             write_multiple_bits_bytes,
             "WriteMultipleBits byte sequence is incorrect"
         );
 
         // WriteMultipleWords 测试
         assert_eq!(
-            FunctionCode::WriteMultipleWords.value(),
+            FunctionCode::WriteU16s.value(),
             write_multiple_words_bytes,
             "WriteMultipleWords byte sequence is incorrect"
         );
