@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, io::Cursor};
+use std::{borrow::Cow, convert::TryFrom, io::Cursor};
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt as _};
 
@@ -15,8 +15,8 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
     #[allow(clippy::panic_in_result_fn)] // Intentional unreachable!()
     fn try_from(req: Request<'a>) -> Result<Vec<Bytes>, Error> {
         use crate::frame::Request::*;
-        let header = RequestHeader::new();
-        let cnt: usize = request_byte_count(&req, header.len());
+        // let header = RequestHeader::new();
+        // let cnt: usize = request_byte_count(&req, header.len());
 
         // 获取通用的地址、代码和进制数
         let (address, quantity_or_len, write_cursor) = match req {
@@ -24,21 +24,128 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
                 let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u32;
                 (address.clone(), adjusted_quantity, None)
             }
-            ReadU16s(ref address, quantity) => (address.clone(), quantity, None),
+            ReadU16s(ref address, quantity) | ReadI16s(ref address, quantity) => {
+                (address.clone(), quantity, None)
+            }
+            ReadU32s(ref address, quantity)
+            | ReadI32s(ref address, quantity)
+            | ReadF32s(ref address, quantity) => (address.clone(), quantity * 2, None),
+
+            ReadF64s(ref address, quantity)
+            | ReadU64s(ref address, quantity)
+            | ReadI64s(ref address, quantity) => (address.clone(), quantity * 4, None),
             WriteBools(ref address, ref bits) => {
-                let cursor = Cursor::new(bits.clone()); // 转换为 Cursor::new
+                let cursor = Cursor::new(Cow::Owned(bools_to_bytes(bits))); // 转换为 Cursor::new
                 (
                     address.clone(),
                     bits.len().try_into().unwrap(),
-                    Some(WriteCursor::Bits(cursor)),
+                    Some(WriteCursor::Bools(cursor)),
                 )
             }
-            WriteU16s(ref address, ref words) => {
-                let cursor = Cursor::new(words.clone()); // 转换为 Cursor::new
+            WriteU16s(ref address, ref u16s) => {
+                // let mut u8_data = Vec::with_capacity(u16s.len() * 2);
+                // for &value in u16s.iter() {
+                //     u8_data.write_u16::<LittleEndian>(value).unwrap(); // 转换为 u8
+                // }
+                // let cursor = Cursor::new(Cow::Owned(u8_data)); // 转换为 Cursor::new
+                // (
+                //     address.clone(),
+                //     u16s.len().try_into().unwrap(),
+                //     Some(WriteCursor::U8s(cursor)),
+                // )
+                let cursor = Cursor::new(Cow::Owned(
+                    u16s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
                 (
                     address.clone(),
-                    words.len().try_into().unwrap(),
-                    Some(WriteCursor::Words(cursor)),
+                    u16s.len().try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteI16s(ref address, ref i16s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    i16s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    i16s.len().try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteU32s(ref address, ref u32s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    u32s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    (u32s.len() * 2).try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteI32s(ref address, ref i32s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    i32s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    (i32s.len() * 2).try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteF32s(ref address, ref f32s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    f32s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    (f32s.len() * 2).try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteU64s(ref address, ref u64s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    u64s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    (u64s.len() * 4).try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteI64s(ref address, ref i64s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    i64s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    (i64s.len() * 4).try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteF64s(ref address, ref f64s) => {
+                let cursor = Cursor::new(Cow::Owned(
+                    f64s.iter()
+                        .flat_map(|&value| value.to_le_bytes())
+                        .collect::<Vec<u8>>(), // 收集为 Vec<u8>
+                ));
+                (
+                    address.clone(),
+                    (f64s.len() * 4).try_into().unwrap(),
+                    Some(WriteCursor::U8s(cursor)),
                 )
             }
         };
@@ -54,49 +161,105 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
 
         let mut current_address = u32_number;
 
-        // 如果有写入操作的 Cursor，则处理它
-        let mut write_iter = match write_cursor {
-            Some(WriteCursor::Bits(ref cursor)) => {
-                // 使用 bools_to_bytes 转换布尔数组为字节数组
-                let bytes = bools_to_bytes(cursor.get_ref());
-                bytes.into_iter()
-            }
-            Some(WriteCursor::Words(ref cursor)) => {
-                let mut bytes = Vec::with_capacity((cursor.get_ref().len() * 2) as usize);
-                // 遍历 cursor 的内容，将每个 u16 转换为小端字节序
-                for &word in cursor.get_ref().iter() {
-                    bytes.extend_from_slice(&word.to_le_bytes());
-                }
-                bytes.into_iter()
-            }
-            None => vec![].into_iter(),
-        };
+        // // 如果有写入操作的 Cursor，则处理它
+        // let mut write_iter = match write_cursor {
+        //     Some(WriteCursor::Bools(ref cursor)) => {
+        //         // 使用 bools_to_bytes 转换布尔数组为字节数组
+        //         let bytes = bools_to_bytes(cursor.get_ref());
+        //         bytes.into_iter()
+        //     }
+        //     Some(WriteCursor::U16s(ref cursor)) => {
+        //         let mut bytes = Vec::with_capacity((cursor.get_ref().len() * 2) as usize);
+        //         // 遍历 cursor 的内容，将每个 u16 转换为小端字节序
+        //         for &u16 in cursor.get_ref().iter() {
+        //             // bytes.extend_from_slice(&u16.to_le_bytes());
+        //             bytes.write_u16::<LittleEndian>(u16).unwrap();
+        //         }
+        //         bytes.into_iter()
+        //     }
+        //     Some(WriteCursor::I16s(ref cursor)) => {
+        //         let mut bytes = Vec::with_capacity((cursor.get_ref().len() * 2) as usize);
+        //         // 遍历 cursor 的内容，将每个 u16 转换为小端字节序
+        //         for &i16 in cursor.get_ref().iter() {
+        //             bytes.extend_from_slice(&i16.to_le_bytes());
+        //         }
+        //         bytes.into_iter()
+        //     }
+        //     None => vec![].into_iter(),
+        // };
 
         let header = RequestHeader::new();
 
         while current_len > 0 {
             let len = current_len.min(LIMIT) as u16;
-            let mut data = BytesMut::with_capacity(cnt);
+            // let mut  data = if let write_cursor =   {
+
+            // };
+            // let mut data = BytesMut::with_capacity(cnt);
+
+            let mut data = match write_cursor {
+                Some(WriteCursor::Bools(_)) => {
+                    BytesMut::with_capacity(
+                        header.len() + REQUEST_BYTE_LAST_LEN + (len as usize + 1) / 2,
+                    ) // 示例：每布尔值占两字节
+                }
+                Some(WriteCursor::U8s(_)) => {
+                    // let u8_length: usize = cursor.get_ref().len(); // 获取 U8 数据长度
+                    BytesMut::with_capacity(
+                        header.len() + REQUEST_BYTE_LAST_LEN + (len * 2) as usize,
+                    ) // 示例：额外添加 10 字节空间
+                }
+                None => BytesMut::with_capacity(header.len() + REQUEST_BYTE_LAST_LEN), // `write_cursor` 为 None 时，使用默认容量
+            };
+
             data.put_slice(header.bytes());
             data.put_slice(&req.function_code().value());
             request_command(&mut data, current_address, code, len);
 
             // println!("读取处理长度 {:?}", len * 2);
 
-            // 写入数据部分
+            // // 写入数据部分
+            // if let Some(write_cursor) = &write_cursor {
+            //     match write_cursor {
+            //         WriteCursor::Bools(_) => {
+            //             println!("{}", ((len as f64) / 2.0).ceil() as u16);
+
+            //             for _ in 0..((len as f64 / 2.0).ceil() as u16) {
+            //                 if let Some(value) = write_iter.next() {
+            //                     data.put_u8(value); // 将每个字节放入数据块
+            //                 }
+            //             }
+            //         }
+            //         WriteCursor::U8s(_) => {
+            //             // Words 类型，长度处理为 len / 2
+            //             for _ in 0..len * 2 {
+            //                 if let Some(value) = write_iter.next() {
+            //                     data.put_u8(value); // 将每个字节放入数据块
+            //                 }
+            //             }
+            //         }
+            //         // WriteCursor::I16s(_) => {
+            //         //     // Words 类型，长度处理为 len / 2
+            //         //     for _ in 0..len * 2 {
+            //         //         if let Some(value) = write_iter.next() {
+            //         //             data.put_u8(value); // 将每个字节放入数据块
+            //         //         }
+            //         //     }
+            //         // }
+            //     }
+            // }
             if let Some(write_cursor) = &write_cursor {
                 match write_cursor {
-                    WriteCursor::Bits(_) => {
-                        println!("{}", ((len as f64) / 2.0).ceil() as u16);
-
+                    WriteCursor::Bools(cursor) => {
+                        let mut write_iter = cursor.get_ref().iter().cloned(); // 从 cursor 中提取迭代器
                         for _ in 0..((len as f64 / 2.0).ceil() as u16) {
                             if let Some(value) = write_iter.next() {
                                 data.put_u8(value); // 将每个字节放入数据块
                             }
                         }
                     }
-                    WriteCursor::Words(_) => {
-                        // Words 类型，长度处理为 len / 2
+                    WriteCursor::U8s(cursor) => {
+                        let mut write_iter = cursor.get_ref().iter().cloned(); // 从 cursor 中提取迭代器
                         for _ in 0..len * 2 {
                             if let Some(value) = write_iter.next() {
                                 data.put_u8(value); // 将每个字节放入数据块
@@ -159,29 +322,88 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
                 Ok(Response::ReadBools(bits))
             }
             Request::ReadU16s(_, quantity) => {
-                let mut words = Vec::with_capacity(quantity as usize);
-                for _ in 0..quantity {
-                    // 读取小端字节序的 u16 值并放入 words 向量g
-                    let word = final_rdr.read_u16::<LittleEndian>()?;
-                    words.push(word);
-                }
+                // let mut u16s = Vec::with_capacity(quantity as usize);
+                // for _ in 0..quantity {
+                //     u16s.push(final_rdr.read_u16::<LittleEndian>()?);
+                // }
 
-                Ok(Response::ReadU16s(words))
+                // Ok(Response::ReadU16s(u16s))
+
+                // let u16s: Result<Vec<_>, _> = (0..quantity)
+                //     .map(|_| final_rdr.read_u16::<LittleEndian>())
+                //     .collect();
+                // Ok(u16s.map(Response::ReadU16s)?)
+
+                Ok((0..quantity)
+                    .map(|_| final_rdr.read_u16::<LittleEndian>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(Response::ReadU16s)?)
             }
+            Request::ReadI16s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_i16::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadI16s)?),
+            Request::ReadU32s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_u32::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadU32s)?),
+            Request::ReadI32s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_i32::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadI32s)?),
+            Request::ReadF32s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_f32::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadF32s)?),
+            Request::ReadF64s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_f64::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadF64s)?),
+            Request::ReadU64s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_u64::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadU64s)?),
+            Request::ReadI64s(_, quantity) => Ok((0..quantity)
+                .map(|_| final_rdr.read_i64::<LittleEndian>())
+                .collect::<Result<Vec<_>, _>>()
+                .map(Response::ReadI64s)?),
+
             Request::WriteBools(_, _) => Ok(Response::WriteBools()),
             Request::WriteU16s(_, _) => Ok(Response::WriteU16s()),
+            Request::WriteI16s(_, _) => Ok(Response::WriteI16s()),
+            Request::WriteU32s(_, _) => Ok(Response::WriteU32s()),
+            Request::WriteI32s(_, _) => Ok(Response::WriteI32s()),
+            Request::WriteF32s(_, _) => Ok(Response::WriteF32s()),
+            Request::WriteI64s(_, _) => Ok(Response::WriteI64s()),
+            Request::WriteU64s(_, _) => Ok(Response::WriteU64s()),
+            Request::WriteF64s(_, _) => Ok(Response::WriteF64s()),
         }
     }
 }
 
-fn request_byte_count(req: &Request<'_>, header_len: usize) -> usize {
-    use crate::frame::Request::*;
-    match *req {
-        ReadBools(_, _) | ReadU16s(_, _) => header_len + REQUEST_BYTE_LAST_LEN,
-        WriteBools(_, ref bits) => header_len + REQUEST_BYTE_LAST_LEN + (bits.len() + 1) / 2,
-        WriteU16s(_, ref words) => header_len + REQUEST_BYTE_LAST_LEN + words.len() * 2,
-    }
-}
+// fn request_byte_count(req: &Request<'_>, header_len: usize) -> usize {
+//     use crate::frame::Request::*;
+//     match *req {
+//         ReadBools(_, _)
+//         | ReadU16s(_, _)
+//         | ReadI16s(_, _)
+//         | ReadU32s(_, _)
+//         | ReadI32s(_, _)
+//         | ReadF32s(_, _)
+//         | ReadF64s(_, _)
+//         | ReadU64s(_, _)
+//         | ReadI64s(_, _) => header_len + REQUEST_BYTE_LAST_LEN,
+//         // WriteBools(_, ref bits) => header_len + REQUEST_BYTE_LAST_LEN + (bits.len() + 1) / 2,
+//         // WriteU16s(_, ref u16s) => header_len + REQUEST_BYTE_LAST_LEN + u16s.len() * 2,
+//         // WriteI16s(_, ref i16s) => header_len + REQUEST_BYTE_LAST_LEN + i16s.len() * 2,
+//         WriteBools(_, _)
+//         | WriteU16s(_, _)
+//         | WriteI16s(_, _)
+//         | WriteI32s(_, _)
+//         | WriteU32s(_, _)
+//         | WriteF32s(_, _) => 0, // 不处理 Write 类型请求
+//     }
+// }
 
 fn request_command(data: &mut BytesMut, address: u32, code: u8, cnt: u16) {
     assert!(address <= 0xFFFFFF, "Address out of range for u24");
@@ -237,7 +459,7 @@ mod tests {
     use std::convert::TryFrom;
 
     #[test]
-    fn test_read_bits_to_bytes() {
+    fn test_read_bools_to_bytes() {
         // 构造一个 ReadBits 请求
         let request = Request::ReadBools("X0".to_owned().into(), 10);
 
@@ -282,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_words_to_bytes() {
+    fn test_read_u16s_to_bytes() {
         // 构造一个 ReadWords 请求
         let request = Request::ReadU16s("D0".to_owned().into(), 901);
 
@@ -350,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_bit_to_bytes() {
+    fn test_write_bool_to_bytes() {
         // 构造一个 ReadBits 请求
         let request = Request::WriteBools(
             "X0".to_owned().into(),
@@ -393,10 +615,9 @@ mod tests {
     }
 
     #[test]
-    fn test_write_words_to_bytes() {
+    fn test_write_u16s_to_bytes() {
         // 构造一个 ReadWords 请求
-        let request =
-            Request::WriteU16s("D0".to_owned().into(), vec![1, 2, 3, 4, 5].into());
+        let request = Request::WriteU16s("D0".to_owned().into(), vec![1, 2, 3, 4, 5].into());
 
         // 调用 try_from，尝试将 Request 转换为 Bytes
         let result = Vec::try_from(request.clone()).unwrap();
@@ -422,18 +643,53 @@ mod tests {
     }
 
     #[test]
+    fn test_write_f32s_to_bytes() {
+        let data: Vec<f32> = vec![60.0, 70.0];
+        // 构造一个 ReadWords 请求
+        let request = Request::WriteF32s("D0".to_owned().into(), data.clone().into());
+
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request.clone()).unwrap();
+
+        // 预期的字节数据，手动计算的结果
+        let mut expected_bytes = vec![
+            // 0x50, 0x00,
+            0x00, 0xFF, 0xFF, 0x03, 0x00, 0x14, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //, 0x00, 0x01,
+            0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA8, 0x04, 0x00,
+        ];
+
+        let data = data
+            .iter()
+            .flat_map(|&value| value.to_le_bytes())
+            .collect::<Vec<u8>>(); // 收集为 Vec<u8>
+
+        // 将 data 的内容追加到 expected_bytes
+        expected_bytes.extend(data);
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            result[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated bytes: {:?}", result[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
+
+    #[test]
     fn test_bools_to_packed_bytes() {
         let bits = vec![true, false, true, true, true];
         let result = bools_to_bytes(&bits);
 
+        let expected_bytes = vec![0x10, 0x11, 0x10];
+
         // 打印为十六进制格式
-        print!("Result in hex: [");
-        for (i, byte) in result.iter().enumerate() {
-            if i > 0 {
-                print!(", ");
-            }
-            print!("0x{:02X}", byte); // 使用 `:02X` 确保补齐两位大写十六进制
-        }
-        println!("]");
+        assert_eq!(
+            result, expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
     }
 }

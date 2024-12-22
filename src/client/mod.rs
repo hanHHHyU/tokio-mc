@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use std::{borrow::Cow, fmt::Debug};
 
 use crate::frame::*;
+// use crate::impl_read_write;
 use crate::Error;
 
 #[async_trait]
@@ -24,6 +25,34 @@ pub trait Reader: Client {
     async fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u16>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_i16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i16>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_u32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_i32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_f32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_f64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_u64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_i64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 #[async_trait]
@@ -32,7 +61,35 @@ pub trait Writer: Client {
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn write_u16s<A>(&mut self, addr: &A, words: &[u16]) -> Result<(), Error>
+    async fn write_u16s<A>(&mut self, addr: &A, u16s: &[u16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_i16s<A>(&mut self, addr: &A, i16s: &[i16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_u32s<A>(&mut self, addr: &A, u32s: &[u32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_i32s<A>(&mut self, addr: &A, i32s: &[i32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_u64s<A>(&mut self, addr: &A, u64s: &[u64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_i64s<A>(&mut self, addr: &A, i64s: &[i64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_f64s<A>(&mut self, addr: &A, f64s: &[f64]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -90,76 +147,353 @@ impl<T: Client> Reader for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        // 根据 plc_model 处理地址
-        let addr = self.process_address(addr)?;
-
-        // 1. 发出请求
-        let call_result: Response = self
-            .client
-            .call(Request::ReadBools(addr.into(), cnt))
-            .await?;
-
-        match call_result {
-            Response::ReadBools(bits) => Ok(bits),
-            _ => unreachable!("Only ReadBits responses are expected"),
-        }
+        self.client
+            .call(Request::ReadBools(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadBools(bools) => Ok(bools),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadBools")
+                    }
+                }
+            })
+            .and_then(|result| result) // 进一步解包 `Result<Vec<i16>, Error>`
     }
+
     async fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u16>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        // 根据 plc_model 处理地址
-        let addr = self.process_address(addr)?;
+        // 调用 `self.client.call`，获取 `Response` 类型的结果
+        self.client
+            .call(Request::ReadU16s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadU16s(u16s) => Ok(u16s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadU16s")
+                    }
+                }
+            })
+            .and_then(|result| result) // 进一步解包 `Result<Vec<i16>, Error>`
+    }
 
-        // 1. 发出请求
-        let call_result = self
-            .client
-            .call(Request::ReadU16s(addr.into(), cnt))
-            .await?;
-        match call_result {
-            Response::ReadU16s(words) => Ok(words),
-            _ => unreachable!("Only ReadBits responses are expected"),
-        }
+    async fn read_i16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i16>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadI16s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadI16s(i16s) => Ok(i16s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadI16s")
+                    }
+                }
+            })
+            .and_then(|result| result) // 进一步解包 `Result<Vec<i16>, Error>`
+    }
+
+    async fn read_u32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadU32s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadU32s(u32s) => Ok(u32s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadU32s")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_i32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadI32s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadI32s(i32s) => Ok(i32s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadI32s")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_f32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadF32s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadF32s(f32s) => Ok(f32s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadI32s")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+    async fn read_f64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadF64s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadF64s(f64s) => Ok(f64s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadI32s")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_u64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadU64s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadU64s(u64s) => Ok(u64s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadU64s")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_i64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadI64s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadI64s(i64s) => Ok(i64s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadI64s")
+                    }
+                }
+            })
+            .and_then(|result| result)
     }
 }
 
 #[async_trait]
 impl<T: Client> Writer for Context<T> {
-    async fn write_bools<A>(&mut self, addr: &A, bits: &[bool]) -> Result<(), Error>
+    async fn write_bools<A>(&mut self, addr: &A, bools: &[bool]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        // 根据 plc_model 处理地址
-        let addr = self.process_address(addr)?;
-        // 1. 发出请求
-        let call_result = self
-            .client
-            .call(Request::WriteBools(addr.into(), Cow::Borrowed(bits)))
-            .await?;
-        match call_result {
-            Response::WriteBools() => Ok(()),
-            _ => unreachable!("Only ReadBits responses are expected"),
-        }
+        self.client
+            .call(Request::WriteBools(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(bools),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteBools() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteBools"),
+                }
+            })
+            .and_then(|result| result)
     }
 
-    async fn write_u16s<A>(&mut self, addr: &A, words: &[u16]) -> Result<(), Error>
+    async fn write_u16s<A>(&mut self, addr: &A, u16s: &[u16]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        // 根据 plc_model 处理地址
-        let addr = self.process_address(addr)?;
-        // 1. 发出请求
-        let call_result = self
-            .client
+        self.client
             .call(Request::WriteU16s(
-                addr.into(),
-                Cow::Borrowed(words),
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(u16s),
             ))
-            .await?;
-        match call_result {
-            Response::WriteU16s() => Ok(()),
-            _ => unreachable!("Only ReadBits responses are expected"),
-        }
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteU16s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteU16s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_i16s<A>(&mut self, addr: &A, i16s: &[i16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteI16s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(i16s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteI16s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteU16s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_u32s<A>(&mut self, addr: &A, u32s: &[u32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteU32s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(u32s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteU32s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteU32s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_i32s<A>(&mut self, addr: &A, i32s: &[i32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteI32s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(i32s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteI32s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteI32s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+    async fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteF32s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(f32s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteF32s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteF32s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_u64s<A>(&mut self, addr: &A, u64s: &[u64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteU64s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(u64s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteU64s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteU64s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_i64s<A>(&mut self, addr: &A, i64s: &[i64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteI64s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(i64s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteI64s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteI64s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_f64s<A>(&mut self, addr: &A, f64s: &[f64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteF64s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(f64s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteF64s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteF64s"),
+                }
+            })
+            .and_then(|result| result)
     }
 }
 

@@ -1,5 +1,5 @@
 use std::{borrow::Cow, io::Cursor};
-use tokio::time::Duration;
+// use tokio::time::Duration;
 
 pub type Quantity = u32;
 
@@ -7,8 +7,8 @@ pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
 
 pub(crate) const LIMIT: u32 = 900;
 
-// 定义一个全局常量来表示超时时间
-pub(crate) const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
+// // 定义一个全局常量来表示超时时间
+// pub(crate) const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NumberBase {
@@ -29,21 +29,14 @@ pub struct PlcInstruction {
 }
 
 pub enum WriteCursor<'a> {
-    Bits(Cursor<Cow<'a, [bool]>>),
-    Words(Cursor<Cow<'a, [u16]>>),
+    Bools(Cursor<Cow<'a, [u8]>>),
+    U8s(Cursor<Cow<'a, [u8]>>),
 }
-
-
-pub enum WriteData {
-    Bits(Vec<u8>),  // 按位存储的字节数组
-    Words(Vec<u8>), // 按字存储的小端字节数组
-}
-
 
 #[derive(Debug, Clone, Copy)]
 pub enum Model {
     Mitsubishi,
-    Keyence
+    Keyence,
 }
 
 impl Default for Model {

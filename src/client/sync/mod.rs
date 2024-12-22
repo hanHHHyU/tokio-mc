@@ -42,21 +42,85 @@ pub trait Client {
 }
 
 pub trait Reader: Client {
-    fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
+    fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<bool>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
+    fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u16>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_i16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i16>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_u32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_i32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_f32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_f64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_u64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_i64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i64>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 pub trait Writer: Client {
-    fn write_bools<A>(&mut self, addr: &A, bits: &'_ [Bit]) -> Result<(), Error>
+    fn write_bools<A>(&mut self, addr: &A, bools: &'_ [bool]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    fn write_u16s<A>(&mut self, addr: &A, words: &'_ [Word]) -> Result<(), Error>
+    fn write_u16s<A>(&mut self, addr: &A, u16s: &'_ [u16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_i16s<A>(&mut self, addr: &A, i16s: &'_ [i16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_i16s<A>(&mut self, addr: &A, i16s: &[i16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_u32s<A>(&mut self, addr: &A, u32s: &[u32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_i32s<A>(&mut self, addr: &A, i32s: &[i32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_u64s<A>(&mut self, addr: &A, u64s: &[u64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_i64s<A>(&mut self, addr: &A, i64s: &[i64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_f64s<A>(&mut self, addr: &A, f64s: &[f64]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -85,7 +149,6 @@ impl<T: AsyncClient> Context<T> {
         // 将模型传递给异步上下文
         self.async_ctx.set_plc_model(model);
     }
-
 }
 
 impl<T: AsyncClient> Client for Context<T> {
@@ -95,7 +158,7 @@ impl<T: AsyncClient> Client for Context<T> {
 }
 
 impl<T: AsyncClient> Reader for Context<T> {
-    fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Bit>, Error>
+    fn read_bools<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<bool>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -106,7 +169,7 @@ impl<T: AsyncClient> Reader for Context<T> {
         )
     }
 
-    fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<Word>, Error>
+    fn read_u16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u16>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -116,28 +179,182 @@ impl<T: AsyncClient> Reader for Context<T> {
             self.async_ctx.read_u16s(addr, cnt),
         )
     }
-}
 
-impl<T: AsyncClient> Writer for Context<T> {
-    fn write_bools<A>(&mut self, addr: &A, bits: &[Bit]) -> Result<(), Error>
+    fn read_i16s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i16>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.write_bools(addr, bits),
+            self.async_ctx.read_i16s(addr, cnt),
         )
     }
 
-    fn write_u16s<A>(&mut self, addr: &A, words: &[Word]) -> Result<(), Error>
+    fn read_u32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u32>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.write_u16s(addr, words),
+            self.async_ctx.read_u32s(addr, cnt),
+        )
+    }
+
+    fn read_i32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_i32s(addr, cnt),
+        )
+    }
+
+    fn read_f32s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f32>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_f32s(addr, cnt),
+        )
+    }
+
+    fn read_f64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<f64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_f64s(addr, cnt),
+        )
+    }
+
+    fn read_u64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_u64s(addr, cnt),
+        )
+    }
+
+    fn read_i64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i64>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_i64s(addr, cnt),
+        )
+    }
+}
+
+impl<T: AsyncClient> Writer for Context<T> {
+    fn write_bools<A>(&mut self, addr: &A, bools: &[bool]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_bools(addr, bools),
+        )
+    }
+
+    fn write_u16s<A>(&mut self, addr: &A, u16s: &[u16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_u16s(addr, u16s),
+        )
+    }
+
+    fn write_i16s<A>(&mut self, addr: &A, i16s: &[i16]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_i16s(addr, i16s),
+        )
+    }
+
+    fn write_u32s<A>(&mut self, addr: &A, u32s: &[u32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_u32s(addr, u32s),
+        )
+    }
+
+    fn write_i32s<A>(&mut self, addr: &A, i32s: &[i32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_i32s(addr, i32s),
+        )
+    }
+
+    fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_f32s(addr, f32s),
+        )
+    }
+
+    fn write_u64s<A>(&mut self, addr: &A, u64s: &[u64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_u64s(addr, u64s),
+        )
+    }
+
+    fn write_i64s<A>(&mut self, addr: &A, i64s: &[i64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_i64s(addr, i64s),
+        )
+    }
+
+    fn write_f64s<A>(&mut self, addr: &A, f64s: &[f64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_f64s(addr, f64s),
         )
     }
 }

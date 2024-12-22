@@ -58,3 +58,24 @@ pub fn convert_keyence_to_mitsubishi_address(address: &str) -> Result<String, KV
         DataOProcess::None => Ok(instruction.to_owned() + address),
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*; // 引入当前模块的所有项，假设 `convert_keyence_to_mitsubishi_address` 在当前模块内
+
+    // 测试 convert_keyence_to_mitsubishi_address 函数
+    #[test]
+    fn test_convert_keyence_to_mitsubishi_address_hex() {
+        let address = "X101";
+        let result = convert_keyence_to_mitsubishi_address(address);
+
+        // 打印 result 以查看实际输出
+        println!("Result: {:?}", result);
+
+        // 你可以根据需要添加断言
+        assert!(result.is_ok());  // 只是一个示例，实际断言内容要根据函数的预期行为来定
+    }
+
+}

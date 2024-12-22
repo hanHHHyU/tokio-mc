@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum KVError {
     #[error("Invalid number format: {input}. Error: {source}")]
     InvalidNumberFormat {
@@ -11,26 +11,24 @@ pub enum KVError {
     #[error("Hexadecimal parsing failed for: {0}")]
     HexParseError(String),
 
-     // 基恩士PLC错误
-     #[error("Keyence PLC address invalid")]
-     AddressInvalid,
- 
-     #[error("Keyence PLC convert error")]
-     ConvertError,
- 
-     #[error("Keyence PLC map not found")]
-     MapNotFound,
- 
-     #[error("Keyence PLC parse error")]
-     PaseError,
- 
-     #[error("Keyence PLC address not found")]
-     AddressNotFound,
+    // 基恩士PLC错误
+    #[error("Keyence PLC address invalid")]
+    AddressInvalid,
 
-     #[error("Parse number error")]
-     ParseNumberError,
+    #[error("Keyence PLC convert error")]
+    ConvertError,
 
+    #[error("Keyence PLC map not found")]
+    MapNotFound,
 
+    #[error("Keyence PLC parse error")]
+    PaseError,
+
+    #[error("Keyence PLC address not found")]
+    AddressNotFound,
+
+    #[error("Parse number error")]
+    ParseNumberError,
 
     #[error("Unknown error occurred: {0}")]
     Unknown(String),
