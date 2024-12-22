@@ -1,5 +1,5 @@
 use std::{borrow::Cow, io::Cursor};
-// use tokio::time::Duration;
+use tokio::time::Duration;
 
 pub type Quantity = u32;
 
@@ -7,8 +7,8 @@ pub(crate) const REQUEST_BYTE_LAST_LEN: usize = 10;
 
 pub(crate) const LIMIT: u32 = 900;
 
-// // 定义一个全局常量来表示超时时间
-// pub(crate) const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
+// 定义一个全局常量来表示超时时间
+pub(crate) const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NumberBase {

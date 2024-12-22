@@ -10,7 +10,7 @@ fn main() -> Result<(), Error> {
     // let words: Vec<u16> = vec![10];
     // let _ = context.write_multiple_words("D0", &words)?;
 
-    let read_result = context.read_i16s("D726", 1)?;
+    let read_result = context.read_f64s("D0", 1)?;
     println!("Read words response: {:?}", read_result);
     Ok(())
 }

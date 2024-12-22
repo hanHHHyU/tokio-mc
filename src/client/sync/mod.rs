@@ -92,10 +92,6 @@ pub trait Writer: Client {
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
-    async fn write_i16s<A>(&mut self, addr: &A, i16s: &[i16]) -> Result<(), Error>
-    where
-        A: AsRef<str> + Send + Sync + ?Sized;
-
     fn write_u32s<A>(&mut self, addr: &A, u32s: &[u32]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
@@ -105,10 +101,6 @@ pub trait Writer: Client {
         A: AsRef<str> + Send + Sync + ?Sized;
 
     fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
-    where
-        A: AsRef<str> + Send + Sync + ?Sized;
-
-    async fn write_f32s<A>(&mut self, addr: &A, f32s: &[f32]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 
