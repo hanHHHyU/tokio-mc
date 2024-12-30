@@ -10,7 +10,12 @@ fn main() -> Result<(), Error> {
     // let words: Vec<u16> = vec![10];
     // let _ = context.write_multiple_words("D0", &words)?;
 
-    let read_result = context.read_f64s("D0", 1)?;
-    println!("Read words response: {:?}", read_result);
+    // let f32: Vec<f32> = vec![70.0];
+    // let _ = context.write_f32s("D0", &f32)?;
+    // println!("Read words response: {:?}", read_result);
+
+    let reult = context.read_reconver_string("D1404", 10)?;
+    println!("Read words response: {:?}", reult);
+
     Ok(())
 }

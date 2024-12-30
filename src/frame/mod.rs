@@ -24,6 +24,7 @@ pub use kv::KVError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCode {
+    ReadU8sAndBools,
     ReadBools,
     ReadU16s,
     ReadI16s,
@@ -33,6 +34,9 @@ pub enum FunctionCode {
     ReadF64s,
     ReadU64s,
     ReadI64s,
+    ReadU8s,
+    ReadString,
+    ReadReconverString,
     WriteBools,
     WriteU16s,
     WriteI16s,
@@ -42,6 +46,9 @@ pub enum FunctionCode {
     WriteU64s,
     WriteI64s,
     WriteF64s,
+    WriteU8s,
+    WriteString,
+    WriteReconverString,
 }
 
 impl FunctionCode {
@@ -91,6 +98,18 @@ impl FunctionCode {
             FunctionCode::ReadI64s => {
                 buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
             }
+            FunctionCode::ReadU8s => {
+                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
+            }
+            FunctionCode::ReadString => {
+                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
+            }
+            FunctionCode::ReadReconverString => {
+                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
+            }
+            FunctionCode::ReadU8sAndBools => {
+                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
+            }
             FunctionCode::WriteBools => {
                 buf.extend_from_slice(&[0x01, 0x14, 0x01, 0x00]);
             }
@@ -118,6 +137,15 @@ impl FunctionCode {
             FunctionCode::WriteF64s => {
                 buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
             }
+            FunctionCode::WriteU8s => {
+                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
+            }
+            FunctionCode::WriteString => {
+                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
+            }
+            FunctionCode::WriteReconverString => {
+                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
+            }
         }
         buf
     }
@@ -133,6 +161,7 @@ impl Display for FunctionCode {
 // 请求的枚举，类似你给出的Modbus请求设计
 #[derive(Debug, Clone, PartialEq)]
 pub enum Request<'a> {
+    ReadU8sAndBools(Cow<'a, str>, Quantity),
     ReadBools(Cow<'a, str>, Quantity),
     ReadU16s(Cow<'a, str>, Quantity),
     ReadI16s(Cow<'a, str>, Quantity),
@@ -142,6 +171,9 @@ pub enum Request<'a> {
     ReadF64s(Cow<'a, str>, Quantity),
     ReadU64s(Cow<'a, str>, Quantity),
     ReadI64s(Cow<'a, str>, Quantity),
+    ReadU8s(Cow<'a, str>, Quantity),
+    ReadString(Cow<'a, str>, Quantity),
+    ReadReconverString(Cow<'a, str>, Quantity),
     WriteBools(Cow<'a, str>, Cow<'a, [bool]>),
     WriteU16s(Cow<'a, str>, Cow<'a, [u16]>),
     WriteI16s(Cow<'a, str>, Cow<'a, [i16]>),
@@ -151,6 +183,9 @@ pub enum Request<'a> {
     WriteU64s(Cow<'a, str>, Cow<'a, [u64]>),
     WriteI64s(Cow<'a, str>, Cow<'a, [i64]>),
     WriteF64s(Cow<'a, str>, Cow<'a, [f64]>),
+    WriteU8s(Cow<'a, str>, Cow<'a, [u8]>),
+    WriteString(Cow<'a, str>, String),
+    WriteReconverString(Cow<'a, str>, String),
 }
 
 // 实现辅助功能，比如将请求转换为'owned'版本或获取功能码
@@ -160,6 +195,7 @@ impl<'a> Request<'a> {
     pub fn into_owned(self) -> Request<'static> {
         use Request::*;
         match self {
+            ReadU8sAndBools(addr, qty) => ReadU8sAndBools(Cow::Owned(addr.into_owned()), qty),
             ReadBools(addr, qty) => ReadBools(Cow::Owned(addr.into_owned()), qty),
             ReadU16s(addr, qty) => ReadU16s(Cow::Owned(addr.into_owned()), qty),
             ReadI16s(addr, qty) => ReadI16s(Cow::Owned(addr.into_owned()), qty),
@@ -169,10 +205,14 @@ impl<'a> Request<'a> {
             ReadF64s(addr, qty) => ReadF64s(Cow::Owned(addr.into_owned()), qty),
             ReadU64s(addr, qty) => ReadU64s(Cow::Owned(addr.into_owned()), qty),
             ReadI64s(addr, qty) => ReadU64s(Cow::Owned(addr.into_owned()), qty),
+            ReadU8s(addr, qty) => ReadU64s(Cow::Owned(addr.into_owned()), qty),
+            ReadString(addr, qty) => ReadString(Cow::Owned(addr.into_owned()), qty),
+            ReadReconverString(addr, qty) => ReadReconverString(Cow::Owned(addr.into_owned()), qty),
             WriteBools(addr, bools) => WriteBools(
                 Cow::Owned(addr.into_owned()),
                 Cow::Owned(bools.into_owned()),
             ),
+
             WriteU16s(addr, u16s) => {
                 WriteU16s(Cow::Owned(addr.into_owned()), Cow::Owned(u16s.into_owned()))
             }
@@ -189,15 +229,21 @@ impl<'a> Request<'a> {
                 WriteF32s(Cow::Owned(addr.into_owned()), Cow::Owned(f32s.into_owned()))
             }
 
-            WriteU64s(addr, u32s) => {
-                WriteU64s(Cow::Owned(addr.into_owned()), Cow::Owned(u32s.into_owned()))
+            WriteU64s(addr, u64s) => {
+                WriteU64s(Cow::Owned(addr.into_owned()), Cow::Owned(u64s.into_owned()))
             }
-            WriteI64s(addr, i32s) => {
-                WriteI64s(Cow::Owned(addr.into_owned()), Cow::Owned(i32s.into_owned()))
+            WriteI64s(addr, i64s) => {
+                WriteI64s(Cow::Owned(addr.into_owned()), Cow::Owned(i64s.into_owned()))
             }
-            WriteF64s(addr, f32s) => {
-                WriteF64s(Cow::Owned(addr.into_owned()), Cow::Owned(f32s.into_owned()))
+            WriteF64s(addr, f64s) => {
+                WriteF64s(Cow::Owned(addr.into_owned()), Cow::Owned(f64s.into_owned()))
             }
+            WriteU8s(addr, u8s) => {
+                WriteU8s(Cow::Owned(addr.into_owned()), Cow::Owned(u8s.into_owned()))
+            }
+            WriteString(addr, string) => WriteString(Cow::Owned(addr.into_owned()), string),
+
+            WriteReconverString(addr, string) => WriteReconverString(Cow::Owned(addr.into_owned()), string),
         }
     }
 
@@ -205,6 +251,7 @@ impl<'a> Request<'a> {
     pub const fn function_code(&self) -> FunctionCode {
         use Request::*;
         match self {
+            ReadU8sAndBools(_, _) => FunctionCode::ReadU8sAndBools,
             ReadBools(_, _) => FunctionCode::ReadBools,
             ReadU16s(_, _) => FunctionCode::ReadU16s,
             ReadI16s(_, _) => FunctionCode::ReadI16s,
@@ -214,6 +261,9 @@ impl<'a> Request<'a> {
             ReadF64s(_, _) => FunctionCode::ReadF64s,
             ReadU64s(_, _) => FunctionCode::ReadU64s,
             ReadI64s(_, _) => FunctionCode::ReadI64s,
+            ReadU8s(_, _) => FunctionCode::ReadU8s,
+            ReadString(_, _) => FunctionCode::ReadString,
+            ReadReconverString(_, _) => FunctionCode::ReadReconverString,
             WriteBools(_, _) => FunctionCode::WriteBools,
             WriteU16s(_, _) => FunctionCode::WriteU16s,
             WriteI16s(_, _) => FunctionCode::WriteI16s,
@@ -223,12 +273,16 @@ impl<'a> Request<'a> {
             WriteU64s(_, _) => FunctionCode::WriteU64s,
             WriteI64s(_, _) => FunctionCode::WriteI64s,
             WriteF64s(_, _) => FunctionCode::WriteF64s,
+            WriteU8s(_, _) => FunctionCode::WriteU8s,
+            WriteString(_, _) => FunctionCode::WriteString,
+            WriteReconverString(_, _) => FunctionCode::WriteReconverString,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Response {
+    ReadU8sAndBools(Vec<u8>, Vec<bool>),
     ReadBools(Vec<bool>),
     ReadU16s(Vec<u16>),
     ReadI16s(Vec<i16>),
@@ -238,6 +292,9 @@ pub enum Response {
     ReadF64s(Vec<f64>),
     ReadU64s(Vec<u64>),
     ReadI64s(Vec<i64>),
+    ReadU8s(Vec<u8>),
+    ReadString(String),
+    ReadReconverString(String),
     // WriteMultipleBits(Address, Quantity, SoftElementCode),
     // WriteMultipleWords(Address, Quantity, SoftElementCode),
     WriteBools(),
@@ -249,6 +306,9 @@ pub enum Response {
     WriteU64s(),
     WriteI64s(),
     WriteF64s(),
+    WriteU8s(),
+    WriteString(),
+    WriteReconverString(),
 }
 
 pub struct ResponseIterator {
@@ -293,6 +353,9 @@ impl Iterator for ResponseIterator {
             Response::ReadI64s(data) => data
                 .pop()
                 .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
+            Response::ReadU8s(data) => data
+                .pop()
+                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
             _ => None,
         }
     }
@@ -304,6 +367,7 @@ impl Response {
         use Response::*;
 
         match self {
+            ReadU8sAndBools(_, _) => FunctionCode::ReadU8sAndBools,
             ReadBools(_) => FunctionCode::ReadBools,
             ReadU16s(_) => FunctionCode::ReadU16s,
             ReadI16s(_) => FunctionCode::ReadI16s,
@@ -313,6 +377,9 @@ impl Response {
             ReadF64s(_) => FunctionCode::ReadF64s,
             ReadU64s(_) => FunctionCode::ReadU64s,
             ReadI64s(_) => FunctionCode::ReadI64s,
+            ReadU8s(_) => FunctionCode::ReadU8s,
+            ReadString(_) => FunctionCode::ReadString,
+            ReadReconverString(_) => FunctionCode::ReadReconverString,
             // WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
             // WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
             WriteBools() => FunctionCode::WriteBools,
@@ -324,6 +391,9 @@ impl Response {
             WriteI64s() => FunctionCode::WriteI64s,
             WriteU64s() => FunctionCode::WriteU64s,
             WriteF64s() => FunctionCode::WriteF64s,
+            WriteU8s() => FunctionCode::WriteU8s,
+            WriteString() => FunctionCode::WriteString,
+            WriteReconverString() => FunctionCode::WriteReconverString,
         }
     }
 }

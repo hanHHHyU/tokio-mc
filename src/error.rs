@@ -11,4 +11,7 @@ pub enum Error {
 
     #[error("Keyence-specific error: {0}")]
     KV(#[from] KVError),
+
+    #[error("Utf8 error: {0}")]
+    Utf8Error(String),
 }

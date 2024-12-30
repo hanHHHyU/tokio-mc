@@ -24,9 +24,10 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
                 let adjusted_quantity = (quantity as f64 / 16.0).ceil() as u32;
                 (address.clone(), adjusted_quantity, None)
             }
-            ReadU16s(ref address, quantity) | ReadI16s(ref address, quantity) => {
-                (address.clone(), quantity, None)
-            }
+            ReadU16s(ref address, quantity)
+            | ReadI16s(ref address, quantity)
+            | ReadU8s(ref address, quantity)
+            | ReadU8sAndBools(ref address, quantity) => (address.clone(), quantity, None),
             ReadU32s(ref address, quantity)
             | ReadI32s(ref address, quantity)
             | ReadF32s(ref address, quantity) => (address.clone(), quantity * 2, None),
@@ -34,6 +35,11 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
             ReadF64s(ref address, quantity)
             | ReadU64s(ref address, quantity)
             | ReadI64s(ref address, quantity) => (address.clone(), quantity * 4, None),
+
+            ReadString(ref address, quantity) | ReadReconverString(ref address, quantity) => {
+                let adjusted_quantity = (quantity as f32 / 2.0).ceil() as u32;
+                (address.clone(), adjusted_quantity, None)
+            }
             WriteBools(ref address, ref bits) => {
                 let cursor = Cursor::new(Cow::Owned(bools_to_bytes(bits))); // 转换为 Cursor::new
                 (
@@ -148,6 +154,53 @@ impl<'a> TryFrom<Request<'a>> for Vec<Bytes> {
                     Some(WriteCursor::U8s(cursor)),
                 )
             }
+            WriteU8s(ref address, ref u8s) => {
+                let cursor = Cursor::new(Cow::Owned(u8s.to_vec()));
+                (
+                    address.clone(),
+                    ((u8s.len() as f32) / 2.0).round() as u32,
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteString(ref address, ref string) => {
+                // 将字符串字节数调整为偶数并创建 Cursor
+                let bytes = {
+                    let mut b = string.bytes().collect::<Vec<u8>>();
+                    if b.len() % 2 != 0 {
+                        b.push(0);
+                    }
+                    b
+                };
+            
+                let cursor = Cursor::new(Cow::Owned(bytes.clone()));
+            
+                (
+                    address.clone(),
+                    (bytes.len() as f32 / 2.0).round() as u32,
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            WriteReconverString(ref address, ref string) => {
+                // 将字符串字节数调整为偶数并创建 Cursor
+                let mut  bytes = {
+                    let mut b = string.bytes().collect::<Vec<u8>>();
+                    if b.len() % 2 != 0 {
+                        b.push(0);
+                    }
+                    b
+                };
+
+                reverse(&mut bytes);
+            
+                let cursor = Cursor::new(Cow::Owned(bytes.clone()));
+            
+                (
+                    address.clone(),
+                    (bytes.len() as f32 / 2.0).round() as u32,
+                    Some(WriteCursor::U8s(cursor)),
+                )
+            }
+            
         };
 
         // // 获取地址、数量和写入数据
@@ -339,6 +392,23 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
                     .collect::<Result<Vec<_>, _>>()
                     .map(Response::ReadU16s)?)
             }
+            Request::ReadU8sAndBools(_, quantity) => {
+                let u8s = final_rdr.get_mut().to_vec();
+                let total_bits = quantity as usize;
+                let data = final_rdr.get_ref();
+
+                // 使用迭代器生成 bits 向量
+                let bits: Vec<bool> = (0..total_bits)
+                    .map(|i| {
+                        let byte_index = i / 8;
+                        let bit_index = i % 8;
+                        // 提取当前位的布尔值
+                        (data[byte_index] >> bit_index) & 1 == 1
+                    })
+                    .collect();
+                Ok(Response::ReadU8sAndBools(u8s, bits))
+            }
+
             Request::ReadI16s(_, quantity) => Ok((0..quantity)
                 .map(|_| final_rdr.read_i16::<LittleEndian>())
                 .collect::<Result<Vec<_>, _>>()
@@ -367,6 +437,37 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
                 .map(|_| final_rdr.read_i64::<LittleEndian>())
                 .collect::<Result<Vec<_>, _>>()
                 .map(Response::ReadI64s)?),
+            Request::ReadU8s(_, _) => Ok(Response::ReadU8s(final_rdr.get_mut().to_vec())),
+
+            Request::ReadString(_, _) => {
+                // 读取数据并反转
+                let data: Vec<u8> = final_rdr.get_mut().to_vec();
+                // 使用 ? 运算符，自动传播错误
+                // 如果从字节转字符串失败，自动返回 `Error::Utf8Error`
+                String::from_utf8(data.to_vec())
+                    .map_err(|e| Error::Utf8Error(e.to_string())) // 转换错误类型
+                    .map(|result| Response::ReadString(result)) // 成功时链式调用 Ok()
+            }
+
+            Request::ReadReconverString(_, _) => {
+                // let mut data: Vec<u8>  = final_rdr.get_mut().to_vec();
+                // reverse(&mut data);
+
+                // // 使用 ? 运算符，自动传播错误
+                // let result = String::from_utf8(data.to_vec()).map_err(|e| Error::Utf8Error(e.to_string()))?;
+
+                // Ok(Response::ReadBEString(result))
+
+                // 读取数据并反转
+                let mut data: Vec<u8> = final_rdr.get_mut().to_vec();
+                reverse(&mut data);
+
+                // 使用 ? 运算符，自动传播错误
+                // 如果从字节转字符串失败，自动返回 `Error::Utf8Error`
+                String::from_utf8(data.to_vec())
+                    .map_err(|e| Error::Utf8Error(e.to_string())) // 转换错误类型
+                    .map(|result| Response::ReadReconverString(result)) // 成功时链式调用 Ok()
+            }
 
             Request::WriteBools(_, _) => Ok(Response::WriteBools()),
             Request::WriteU16s(_, _) => Ok(Response::WriteU16s()),
@@ -377,6 +478,9 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
             Request::WriteI64s(_, _) => Ok(Response::WriteI64s()),
             Request::WriteU64s(_, _) => Ok(Response::WriteU64s()),
             Request::WriteF64s(_, _) => Ok(Response::WriteF64s()),
+            Request::WriteU8s(_, _) => Ok(Response::WriteU8s()),
+            Request::WriteString(_, _) => Ok(Response::WriteString()),
+            Request::WriteReconverString(_, _) => Ok(Response::WriteReconverString()),
         }
     }
 }
@@ -453,6 +557,18 @@ pub fn bools_to_bytes(bools: &[bool]) -> Vec<u8> {
         .collect()
 }
 
+fn reverse(bs: &mut [u8]) {
+    let len = bs.len();
+    for i in 0..len / 2 {
+        let num = i * 2;
+        let num2 = num + 1;
+
+        // 确保不会超出数组范围
+        if num2 < len {
+            bs.swap(num, num2);
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -680,6 +796,43 @@ mod tests {
     }
 
     #[test]
+    fn test_write_u8s_to_bytes() {
+        let data: Vec<u8> = vec![1, 2, 3, 4];
+        // 构造一个 ReadWords 请求
+        let request = Request::WriteU8s("D0".to_owned().into(), data.clone().into());
+
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request.clone()).unwrap();
+
+        // 预期的字节数据，手动计算的结果
+        let mut expected_bytes = vec![
+            // 0x50, 0x00,
+            0x00, 0xFF, 0xFF, 0x03, 0x00, 0x10, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //, 0x00, 0x01,
+            0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA8, 0x02, 0x00,
+        ];
+
+        let data = data
+            .iter()
+            .flat_map(|&value| value.to_le_bytes())
+            .collect::<Vec<u8>>(); // 收集为 Vec<u8>
+
+        // 将 data 的内容追加到 expected_bytes
+        expected_bytes.extend(data);
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            result[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated bytes: {:?}", result[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
+
+    #[test]
     fn test_bools_to_packed_bytes() {
         let bits = vec![true, false, true, true, true];
         let result = bools_to_bytes(&bits);
@@ -691,5 +844,133 @@ mod tests {
             result, expected_bytes,
             "The first byte block does not match the expected bytes"
         );
+    }
+    #[test]
+    fn test_read_le_string() {
+        // 构造一个 ReadBits 请求
+        let request = Request::ReadString("D0".to_owned().into(), 6);
+
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request);
+
+        // 验证转换成功
+        assert!(result.is_ok());
+
+        // 获取转换后的字节数据
+        let bytes = result.unwrap();
+
+        // 检查返回的字节向量是否符合预期
+        assert_eq!(bytes.len(), 1); // 假设一次循环能处理 32 个字节
+
+        // 预期的字节数据，手动计算的结果
+        let expected_bytes = vec![
+            // 0x50, 0x00, // 3E 00 为MC协议的固定头
+            0x00, // 00(网路编号) ：上位访问下位，固定00；
+            0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
+            0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
+            0x00, // 00(目标模块站号) ：上位访问下位，固定00；
+            0x0C, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //
+            0x01, 0x04, // 01 04 为读取命令
+            0x00, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
+            0x00, 0x00, 0x00, // 起始地址 50
+            0xA8, // 软元件代码9C为X为软元件代码
+            0x03, 0x00, // 读取的软元件点数
+        ];
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            bytes[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated bytes: {:?}", bytes[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
+
+    #[test]
+    fn test_write_string() {
+        // 构造一个 ReadBits 请求
+        let request = Request::WriteString("D0".to_owned().into(), "Helloo".to_owned());
+
+        // 调用 try_from，尝试将 Request 转换为 Bytes
+        let result = Vec::try_from(request);
+
+        // 验证转换成功
+        assert!(result.is_ok());
+
+        // 获取转换后的字节数据
+        let bytes = result.unwrap();
+
+        // 检查返回的字节向量是否符合预期
+        assert_eq!(bytes.len(), 1); // 假设一次循环能处理 32 个字节
+
+        // 预期的字节数据，手动计算的结果
+        let expected_bytes = vec![
+            // 0x50, 0x00, // 3E 00 为MC协议的固定头
+            0x00, // 00(网路编号) ：上位访问下位，固定00；
+            0xFF, // FF(PLC编号) ：上位访问下位，固定FF；
+            0xFF, 0x03, // 03(目标模块IO编号) ：上位访问下位，固定03；
+            0x00, // 00(目标模块站号) ：上位访问下位，固定00；
+            0x12, 0x00, // 0x0C 为请求数据的长度
+            0x10, 0x00, //
+            0x01, 0x14, // 01 04 为读取命令
+            0x00, 0x00, // 按字读取，如果按位读取则为 0x01 0x00
+            0x00, 0x00, 0x00, // 起始地址 50
+            0xA8, // 软元件代码9C为X为软元件代码
+            0x03, 0x00, // 读取的软元件点数
+            0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x6F,
+        ];
+
+        // 验证第一个字节数组是否与预期匹配bytes
+        assert_eq!(
+            bytes[0].to_vec(),
+            expected_bytes,
+            "The first byte block does not match the expected bytes"
+        );
+
+        // 打印调试信息
+        println!("Generated bytes: {:?}", bytes[0].to_vec());
+        println!("Expected bytes: {:?}", expected_bytes);
+    }
+
+    #[test]
+    fn test_abc() {
+        // let data = vec![
+        //     83, 82, 65, 45, 45, 85, 85, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        // ];
+        // let mut final_rdr = Cursor::new(data);
+
+        // // 获取底层数据的可变引用
+        // let data_ref = final_rdr.get_mut(); // 使用 get_mut() 获取底层数据的可变引用
+
+        // // // 找到第一个为 0 的位置并修改
+        // // if let Some(index) = data_ref.iter().position(|&x| x == 0) {
+        // //     data_ref[index] = 48;  // 将找到的位置修改为 48 ('0' 的 ASCII 值)
+        // // }
+
+        // reverse(data_ref);
+
+        // let result = String::from_utf8(data_ref.to_vec()).unwrap();
+
+        // // 打印修改后的底层数据
+        // println!("Modified data: {:?}", result);
+
+        let s = String::from("Hello");
+
+        // 将每个字符转换为 ASCII 码
+        let ascii_codes: Vec<u8> = s.bytes().collect();
+
+        println!("ASCII 码: {:?}", ascii_codes);
+
+        let s = String::from("Hello");
+        println!("字符数: {}", s.chars().count());
+        println!("字节数: {}", s.len());
+
+        let s2 = String::from("你好");
+        println!("字符数: {}", s2.chars().count());
+        println!("字节数: {}", s2.len());
     }
 }

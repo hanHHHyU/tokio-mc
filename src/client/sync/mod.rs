@@ -77,6 +77,26 @@ pub trait Reader: Client {
     fn read_i64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i64>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_u8s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u8>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_reconver_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn read_u8s_and_bools<A>(
+        &mut self,
+        addr: &A,
+        cnt: Quantity,
+    ) -> Result<(Vec<u8>, Vec<bool>), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 pub trait Writer: Client {
@@ -113,6 +133,18 @@ pub trait Writer: Client {
         A: AsRef<str> + Send + Sync + ?Sized;
 
     fn write_f64s<A>(&mut self, addr: &A, f64s: &[f64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_u8s<A>(&mut self, addr: &A, u8s: &[u8]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    fn write_reconver_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -248,6 +280,53 @@ impl<T: AsyncClient> Reader for Context<T> {
             self.async_ctx.read_i64s(addr, cnt),
         )
     }
+
+    fn read_u8s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u8>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_u8s(addr, cnt),
+        )
+    }
+    fn read_reconver_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_reconver_string(addr, cnt),
+        )
+    }
+
+    fn read_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_string(addr, cnt),
+        )
+    }
+
+    fn read_u8s_and_bools<A>(
+        &mut self,
+        addr: &A,
+        cnt: Quantity,
+    ) -> Result<(Vec<u8>, Vec<bool>), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.read_u8s_and_bools(addr, cnt),
+        )
+    }
 }
 
 impl<T: AsyncClient> Writer for Context<T> {
@@ -347,6 +426,39 @@ impl<T: AsyncClient> Writer for Context<T> {
             &self.runtime,
             self.timeout,
             self.async_ctx.write_f64s(addr, f64s),
+        )
+    }
+
+    fn write_u8s<A>(&mut self, addr: &A, u8s: &[u8]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_u8s(addr, u8s),
+        )
+    }
+
+    fn write_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_string(addr, s),
+        )
+    }
+
+    fn write_reconver_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        block_on_with_timeout(
+            &self.runtime,
+            self.timeout,
+            self.async_ctx.write_reconver_string(addr, s),
         )
     }
 }

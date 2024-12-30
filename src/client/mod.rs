@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use std::{borrow::Cow, fmt::Debug};
 
 use crate::frame::*;
-// use crate::impl_read_write;
 use crate::Error;
 
 #[async_trait]
@@ -53,6 +52,25 @@ pub trait Reader: Client {
     async fn read_i64s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<i64>, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_u8s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u8>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn read_reconver_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+    async fn read_u8s_and_bools<A>(
+        &mut self,
+        addr: &A,
+        cnt: Quantity,
+    ) -> Result<(Vec<u8>, Vec<bool>), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
 }
 
 #[async_trait]
@@ -90,6 +108,18 @@ pub trait Writer: Client {
         A: AsRef<str> + Send + Sync + ?Sized;
 
     async fn write_f64s<A>(&mut self, addr: &A, f64s: &[f64]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_u8s<A>(&mut self, addr: &A, u8s: &[u8]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized;
+
+    async fn write_reconver_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized;
 }
@@ -313,6 +343,92 @@ impl<T: Client> Reader for Context<T> {
             })
             .and_then(|result| result)
     }
+
+    async fn read_u8s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u8>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadU8s(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadU8s(u8s) => Ok(u8s),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadU8s")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_reconver_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadReconverString(
+                self.process_address(addr)?.into(),
+                cnt,
+            ))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadReconverString(be_string) => Ok(be_string),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadReconverString")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadString(self.process_address(addr)?.into(), cnt))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadString(be_string) => Ok(be_string),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadString")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn read_u8s_and_bools<A>(
+        &mut self,
+        addr: &A,
+        cnt: Quantity,
+    ) -> Result<(Vec<u8>, Vec<bool>), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::ReadU8sAndBools(
+                self.process_address(addr)?.into(),
+                cnt,
+            ))
+            .await
+            .map(|response| {
+                match response {
+                    Response::ReadU8sAndBools(u8s, bools) => Ok((u8s, bools)),
+                    _ => {
+                        // 如果响应不是 `ReadI16s` 类型，则触发错误
+                        unreachable!("Unexpected response type, expected ReadU8sAndBools")
+                    }
+                }
+            })
+            .and_then(|result| result)
+    }
 }
 
 #[async_trait]
@@ -492,6 +608,59 @@ impl<T: Client> Writer for Context<T> {
                     Response::WriteF64s() => Ok(()),
                     _ => unreachable!("Unexpected response type, expected WriteF64s"),
                 }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_u8s<A>(&mut self, addr: &A, u8s: &[u8]) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteU8s(
+                self.process_address(addr)?.into(),
+                Cow::Borrowed(u8s),
+            ))
+            .await
+            .map(|response| {
+                // 使用 `map` 进行链式调用，检查响应类型
+                match response {
+                    Response::WriteU8s() => Ok(()),
+                    _ => unreachable!("Unexpected response type, expected WriteU8s"),
+                }
+            })
+            .and_then(|result| result)
+    }
+
+    async fn write_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteString(
+                self.process_address(addr)?.into(),
+                s.as_ref().to_string(), // 显式转换为 String
+            ))
+            .await
+            .map(|response| match response {
+                Response::WriteString() => Ok(()),
+                _ => unreachable!("Unexpected response type, expected WriteString"),
+            })
+            .and_then(|result| result)
+    }
+    async fn write_reconver_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        self.client
+            .call(Request::WriteReconverString(
+                self.process_address(addr)?.into(),
+                s.as_ref().to_string(), // 显式转换为 String
+            ))
+            .await
+            .map(|response| match response {
+                Response::WriteReconverString() => Ok(()),
+                _ => unreachable!("Unexpected response type, expected WriteReconverString"),
             })
             .and_then(|result| result)
     }

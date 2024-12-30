@@ -54,8 +54,8 @@ impl ResponseHeader {
         buf.put_u8(0x00);
         buf.put_u16_le(2); // 长度默认
                            // buf.put_u16_le(0); // 代码，默认成功 00
-        // buf.put_u16_le(2); // 回馈代码
-        //                    // D0 00 00 FF FF 03 00
+                           // buf.put_u16_le(2); // 回馈代码
+                           //                    // D0 00 00 FF FF 03 00
 
         // 将 BytesMut 冻结为不可变的 Bytes
         ResponseHeader(buf.freeze())
