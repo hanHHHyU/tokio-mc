@@ -27,10 +27,10 @@ Add the following to your `Cargo.toml` to use `tokio-mc` with the desired featur
 
 ```toml
 # For async usage
-tokio-mc = { version = "0.1.1", features = ["3e-async"] }
+tokio-mc = { version = "0.1.2", features = ["3e-async"] }
 
 # For sync usage
-tokio-mc = { version = "0.1.1", features = ["3e-sync"] }
+tokio-mc = { version = "0.1.2", features = ["3e-sync"] }
 ```
 
 
