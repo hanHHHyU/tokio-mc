@@ -7,13 +7,6 @@ fn main() -> Result<(), Error> {
     let mut context = tcp::connect(addr)?;
     context.set_plc_model(Model::Keyence);
 
-    // let words: Vec<u16> = vec![10];
-    // let _ = context.write_multiple_words("D0", &words)?;
-
-    // let f32: Vec<f32> = vec![70.0];
-    // let _ = context.write_f32s("D0", &f32)?;
-    // println!("Read words response: {:?}", read_result);
-
     let reult = context.read_reconver_string("D1404", 10)?;
     println!("Read words response: {:?}", reult);
 
