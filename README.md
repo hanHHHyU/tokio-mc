@@ -78,10 +78,6 @@ use tokio_mc::{
     Error,
 };
 
-#[tokio::main]
-use std::net::SocketAddr;
-use tokio_mc::{client::sync::*, frame::Model, Error};
-
 fn main() -> Result<(), Error> {
     let addr = "192.168.110.252:5000".parse::<SocketAddr>().unwrap();
     let mut context = tcp::connect(addr)?;
