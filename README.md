@@ -98,3 +98,15 @@ fn main() -> Result<(), Error> {
 When using this library for PLC communication, please first make sure that there is no abnormality in your connection. I used the 3E frame protocol, which has been tested with Keyence and Mitsubishi and used in actual projects. If you have any feedback or suggestions, please contact me via QQ email. My experience is limited, and I may add simulated servers and various protocol frames in the future.
 
 Some codes are referenced from[ tokio-modbus](https://github.com/slowtec/tokio-modbus)。
+
+## AI 工具与 API
+
+我们提供一系列高效的 AI 工具及其 API，助力加速您的项目开发和 APP 二次开发。
+
+- 支持多种 AI 模型
+- 灵活的调用方式
+- 提供全网最低价
+
+如果您有兴趣，欢迎通过以下方式联系我：
+
+ QQ 号：1046365096
