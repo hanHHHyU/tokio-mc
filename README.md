@@ -99,20 +99,3 @@ When using this library for PLC communication, please first make sure that there
 
 Some codes are referenced from[ tokio-modbus](https://github.com/slowtec/tokio-modbus)。
 
-## AI 工具与 API
-
-我们提供一系列高效的 AI 工具及其 API，助力加速您的项目开发和 APP 二次开发。
-AI类软件：GPT/CLAUDE/POE/NIJI/RUNWAY
-API：Claude API (官方直连和中转)
-
-- 支持多种 AI 模型
-- 灵活的调用方式
-- 提供全网最低价
-- 质保（封号可以按天退）
-
-### 示例价格
-- ChatGPT现号 ￥138/月 ，代充按人民币兑美元汇率+￥5
-
-如果您有兴趣，欢迎通过以下方式联系我：
-
- QQ 号：1046365096
