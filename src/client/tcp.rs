@@ -1,4 +1,4 @@
-use std::{fmt, io, net::SocketAddr};
+use std::{fmt, io, net::SocketAddr, time::Duration};
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
@@ -15,6 +15,21 @@ use super::{Client, Context, Request, Response};
 /// Establish a direct connection to a MC TCP device
 pub async fn connect(socket_addr: SocketAddr) -> Result<Context<TcpClient>, Error> {
     let transport = TcpStream::connect(socket_addr).await?;
+    let client = TcpClient::new(transport);
+    let context = Context::<TcpClient>::new(client);
+    Ok(context)
+}
+
+/// Establish a direct connection to a MC TCP device with timeout
+pub async fn connect_with_timeout(
+    socket_addr: SocketAddr,
+    timeout: Duration,
+) -> Result<Context<TcpClient>, Error> {
+    let transport = tokio::time::timeout(timeout, TcpStream::connect(socket_addr))
+        .await
+        .map_err(|_| Error::Transport(io::Error::new(io::ErrorKind::TimedOut, "Connection timeout")))?
+        .map_err(Error::Transport)?;
+    
     let client = TcpClient::new(transport);
     let context = Context::<TcpClient>::new(client);
     Ok(context)

@@ -100,10 +100,6 @@ impl Service for MitsubishiMcTestServer {
                             let bytes = word_value.to_le_bytes();
                             result.extend_from_slice(&bytes);
 
-                            log::debug!(
-                                "Word {} -> bit_start: {}, u16_value: 0x{:04X}, bytes: [{:02X}, {:02X}]",
-                                word_idx, bit_start, word_value, bytes[0], bytes[1]
-                            );
                         }
 
                         log::info!(
@@ -201,13 +197,6 @@ impl Service for MitsubishiMcTestServer {
                                     let bit_value = (word_value >> bit_idx) & 1 != 0;
                                     data[bit_addr] = bit_value;
 
-                                    log::debug!(
-                                        "Set bit {} to {} -> bit_addr: {}, word_value: 0x{:04X}",
-                                        bit_idx,
-                                        bit_value,
-                                        bit_addr,
-                                        word_value
-                                    );
                                 }
                             }
 
@@ -264,10 +253,6 @@ impl Service for MitsubishiMcTestServer {
                                 let byte_value = data[byte_offset];
                                 let bit_value = (byte_value >> bit_offset) & 0x01 != 0;
                                 result_bits.push(bit_value);
-                                log::debug!(
-                                    "Read bit {} -> word_offset: {}, bit_in_word: {}, byte_offset: {}, bit_offset: {}, byte_value: 0x{:02X}, bit_value: {}",
-                                    i, word_offset, bit_in_word, byte_offset, bit_offset, byte_value, bit_value
-                                );
                             } else {
                                 result_bits.push(false); // 超出范围返回false
                                 log::warn!("Bit {} out of range, byte_offset: {}", i, byte_offset);
@@ -294,12 +279,6 @@ impl Service for MitsubishiMcTestServer {
                                 let bit_value = data[bit_addr];
                                 result_bits.push(bit_value);
 
-                                log::debug!(
-                                    "Read bit {} -> bit_addr: {}, bit_value: {}",
-                                    i,
-                                    bit_addr,
-                                    bit_value
-                                );
                             } else {
                                 result_bits.push(false); // 超出范围返回false
                                 log::warn!("Bit {} out of range, bit_addr: {}", i, bit_addr);
@@ -367,10 +346,6 @@ impl Service for MitsubishiMcTestServer {
                                 }
 
                                 data[byte_offset] = byte_value;
-                                log::debug!(
-                                    "Set bit {} to {} -> word_offset: {}, bit_in_word: {}, byte_offset: {}, bit_offset: {}, byte value now: 0x{:02X}",
-                                    i, bit_value, word_offset, bit_in_word, byte_offset, bit_offset, byte_value
-                                );
                             } else {
                                 log::warn!("Bit {} out of range, byte_offset: {}", i, byte_offset);
                             }
@@ -395,21 +370,6 @@ impl Service for MitsubishiMcTestServer {
                             if bit_addr < data.len() {
                                 let old_value = data[bit_addr];
                                 data[bit_addr] = bit_value;
-                                log::debug!(
-                                    "Set bit {} to {} -> bit_addr: {}, old_value: {}",
-                                    i,
-                                    bit_value,
-                                    bit_addr,
-                                    old_value
-                                );
-                                
-                                // 检查是否影响了相邻的位
-                                if bit_addr > 0 {
-                                    log::debug!("  Previous bit M{}: {}", bit_addr - 1, data[bit_addr - 1]);
-                                }
-                                if bit_addr + 1 < data.len() {
-                                    log::debug!("  Next bit M{}: {}", bit_addr + 1, data[bit_addr + 1]);
-                                }
                             } else {
                                 log::warn!("Bit {} out of range, bit_addr: {}", i, bit_addr);
                             }
