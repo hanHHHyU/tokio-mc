@@ -393,13 +393,23 @@ impl Service for MitsubishiMcTestServer {
                             let bit_addr = start_addr + i;
 
                             if bit_addr < data.len() {
+                                let old_value = data[bit_addr];
                                 data[bit_addr] = bit_value;
                                 log::debug!(
-                                    "Set bit {} to {} -> bit_addr: {}",
+                                    "Set bit {} to {} -> bit_addr: {}, old_value: {}",
                                     i,
                                     bit_value,
-                                    bit_addr
+                                    bit_addr,
+                                    old_value
                                 );
+                                
+                                // 检查是否影响了相邻的位
+                                if bit_addr > 0 {
+                                    log::debug!("  Previous bit M{}: {}", bit_addr - 1, data[bit_addr - 1]);
+                                }
+                                if bit_addr + 1 < data.len() {
+                                    log::debug!("  Next bit M{}: {}", bit_addr + 1, data[bit_addr + 1]);
+                                }
                             } else {
                                 log::warn!("Bit {} out of range, bit_addr: {}", i, bit_addr);
                             }
@@ -706,7 +716,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(e);
     }
 
-    let socket_addr: SocketAddr = "127.0.0.1:5504".parse().unwrap();
+    let socket_addr: SocketAddr = "127.0.0.1:6000".parse().unwrap();
 
     tokio::select! {
         result = server_context(socket_addr) => {

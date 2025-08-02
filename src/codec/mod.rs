@@ -292,8 +292,10 @@ impl<'a> TryFrom<Bytes> for Request<'a> {
             FunctionCode::ReadBits => Ok(Request::ReadBits(address, quantity)),
             FunctionCode::WriteBits => {
                 let bytes = cursor.get_ref()[cursor.position() as usize..].to_vec();
-                let bits = bytes_to_bools(&bytes);
-                log::debug!("Parsed bits: {:?}", bits);
+                let mut bits = bytes_to_bools(&bytes);
+                // 根据quantity截取正确数量的位
+                bits.truncate(quantity as usize);
+                log::debug!("Parsed {} bits: {:?}", quantity, bits);
                 Ok(Request::WriteBits(address, bits.into()))
             }
         }

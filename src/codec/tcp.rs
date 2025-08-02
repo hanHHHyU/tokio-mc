@@ -107,9 +107,12 @@ impl Decoder for McServerDecoder {
 
         log::debug!("Data length: {}", len);
 
-        // if buf.len() < total_len {
-        //     return Ok(None); // Need more data
-        // }
+        // 检查是否有足够的数据来读取完整的包
+        let total_len = header_len - 4 + len + 2;
+        if buf.len() < total_len {
+            log::debug!("Need more data: buf.len()={}, total_len={}", buf.len(), total_len);
+            return Ok(None); // Need more data
+        }
 
         log::debug!("Server2 received buffer: {:02X?}", &buf[..]);
 
