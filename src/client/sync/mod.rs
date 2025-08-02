@@ -281,36 +281,20 @@ impl<T: AsyncClient> Reader for Context<T> {
         )
     }
 
-    fn read_u8s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u8>, Error>
-    where
-        A: AsRef<str> + Send + Sync + ?Sized,
-    {
-        block_on_with_timeout(
-            &self.runtime,
-            self.timeout,
-            self.async_ctx.read_u8s(addr, cnt),
-        )
-    }
     fn read_reconver_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        block_on_with_timeout(
-            &self.runtime,
-            self.timeout,
-            self.async_ctx.read_reconver_string(addr, cnt),
-        )
+        // 目前未实现，返回错误
+        Err(Error::Protocol(crate::frame::ProtocolError::NotImplemented))
     }
 
     fn read_string<A>(&mut self, addr: &A, cnt: Quantity) -> Result<String, Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
-        block_on_with_timeout(
-            &self.runtime,
-            self.timeout,
-            self.async_ctx.read_string(addr, cnt),
-        )
+        // 目前未实现，返回错误
+        Err(Error::Protocol(crate::frame::ProtocolError::NotImplemented))
     }
 
     fn read_u8s_and_bools<A>(
@@ -321,16 +305,24 @@ impl<T: AsyncClient> Reader for Context<T> {
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
+        // 目前未实现，返回错误
+        Err(Error::Protocol(crate::frame::ProtocolError::NotImplemented))
+    }
+
+    fn read_u8s<A>(&mut self, addr: &A, cnt: Quantity) -> Result<Vec<u8>, Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
         block_on_with_timeout(
             &self.runtime,
             self.timeout,
-            self.async_ctx.read_u8s_and_bools(addr, cnt),
+            self.async_ctx.read_u8s(addr, cnt),
         )
     }
 }
 
 impl<T: AsyncClient> Writer for Context<T> {
-    fn write_bools<A>(&mut self, addr: &A, bools: &[bool]) -> Result<(), Error>
+    fn write_bools<A>(&mut self, addr: &A, bools: &'_ [bool]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -341,7 +333,7 @@ impl<T: AsyncClient> Writer for Context<T> {
         )
     }
 
-    fn write_u16s<A>(&mut self, addr: &A, u16s: &[u16]) -> Result<(), Error>
+    fn write_u16s<A>(&mut self, addr: &A, u16s: &'_ [u16]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -352,7 +344,7 @@ impl<T: AsyncClient> Writer for Context<T> {
         )
     }
 
-    fn write_i16s<A>(&mut self, addr: &A, i16s: &[i16]) -> Result<(), Error>
+    fn write_i16s<A>(&mut self, addr: &A, i16s: &'_ [i16]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
     {
@@ -429,6 +421,22 @@ impl<T: AsyncClient> Writer for Context<T> {
         )
     }
 
+    fn write_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        // 目前未实现，返回错误
+        Err(Error::Protocol(crate::frame::ProtocolError::NotImplemented))
+    }
+
+    fn write_reconver_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
+    where
+        A: AsRef<str> + Send + Sync + ?Sized,
+    {
+        // 目前未实现，返回错误
+        Err(Error::Protocol(crate::frame::ProtocolError::NotImplemented))
+    }
+
     fn write_u8s<A>(&mut self, addr: &A, u8s: &[u8]) -> Result<(), Error>
     where
         A: AsRef<str> + Send + Sync + ?Sized,
@@ -437,28 +445,6 @@ impl<T: AsyncClient> Writer for Context<T> {
             &self.runtime,
             self.timeout,
             self.async_ctx.write_u8s(addr, u8s),
-        )
-    }
-
-    fn write_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
-    where
-        A: AsRef<str> + Send + Sync + ?Sized,
-    {
-        block_on_with_timeout(
-            &self.runtime,
-            self.timeout,
-            self.async_ctx.write_string(addr, s),
-        )
-    }
-
-    fn write_reconver_string<A>(&mut self, addr: &A, s: &A) -> Result<(), Error>
-    where
-        A: AsRef<str> + Send + Sync + ?Sized,
-    {
-        block_on_with_timeout(
-            &self.runtime,
-            self.timeout,
-            self.async_ctx.write_reconver_string(addr, s),
         )
     }
 }

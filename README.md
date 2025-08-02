@@ -27,10 +27,10 @@ Add the following to your `Cargo.toml` to use `tokio-mc` with the desired featur
 
 ```toml
 # For async usage
-tokio-mc = { version = "0.1.2", features = ["3e-async"] }
+tokio-mc = { version = "0.1.3", features = ["3e-async"] }
 
 # For sync usage
-tokio-mc = { version = "0.1.2", features = ["3e-sync"] }
+tokio-mc = { version = "0.1.3", features = ["3e-sync"] }
 ```
 
 
@@ -42,7 +42,7 @@ Here's how to use the async features of `tokio-mc`:
 use std::net::SocketAddr;
 use tokio::time::Duration;
 use tokio_mc::{
-    client::{tcp::*, Reader},
+    client::{tcp::*, Reader, Writer},
     frame::Model,
     Error,
 };
@@ -54,11 +54,10 @@ async fn main() -> Result<(), Error> {
         .map_err(|e| Error::Transport(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 
     let mut context = connect(addr).await?;
-
     context.set_plc_model(Model::Keyence);
-
-    let result = context.read_i32s("D1000", 1).await?;
-    println!("Read U8s response: {:?}", result);
+    let u16_values = context.read_u16s("D1002", 2).await?;
+    println!("Read U16s: {:?}", u16_values);
+    
     Ok(())
 }
 
@@ -71,20 +70,24 @@ Here's how to use the sync features of `tokio-mc`:
 
 ```rust,no_run
 use std::net::SocketAddr;
-use tokio::time::Duration;
 use tokio_mc::{
-    client::{tcp::*, Reader},
+    client::sync::{tcp::*, Reader, Writer},
     frame::Model,
     Error,
 };
 
 fn main() -> Result<(), Error> {
     let addr = "192.168.110.252:5000".parse::<SocketAddr>().unwrap();
-    let mut context = tcp::connect(addr)?;
+    let mut context = connect(addr)?;
     context.set_plc_model(Model::Keyence);
 
-    let reult = context.read_reconver_string("D1404", 10)?;
-    println!("Read words response: {:?}", reult);
+    // Read different data types
+    let u8_values = context.read_u8s("D1000", 2)?;
+    println!("Read U8s: {:?}", u8_values);
+
+
+    context.write_bools("M200", &[true, false, true, true])?;
+    println!("Written Bools successfully");
 
     Ok(())
 }
@@ -95,7 +98,7 @@ fn main() -> Result<(), Error> {
 
 ## Disclaimer
 
-When using this library for PLC communication, please first make sure that there is no abnormality in your connection. I used the 3E frame protocol, which has been tested with Keyence and Mitsubishi and used in actual projects. If you have any feedback or suggestions, please contact me via QQ email. My experience is limited, and I may add simulated servers and various protocol frames in the future.
+When using this library for PLC communication, please first make sure that there is no abnormality in your connection. I used the 3E frame protocol, which has been tested with Keyence and Mitsubishi and used in actual projects. If you have any feedback or suggestions, please contact me via QQ email.
 
 Some codes are referenced from[ tokio-modbus](https://github.com/slowtec/tokio-modbus)。
 

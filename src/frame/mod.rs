@@ -15,7 +15,7 @@ mod types;
 
 pub use error::{map_error_code, ProtocolError};
 
-pub use map::{convert_to_base, find_instruction_code};
+pub use map::{convert_to_base, find_instruction_code, find_prefix_and_base_by_code};
 pub use regex::split_address;
 
 pub use kv::convert_keyence_to_mitsubishi_address;
@@ -24,31 +24,10 @@ pub use kv::KVError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCode {
-    ReadU8sAndBools,
-    ReadBools,
-    ReadU16s,
-    ReadI16s,
-    ReadU32s,
-    ReadI32s,
-    ReadF32s,
-    ReadF64s,
-    ReadU64s,
-    ReadI64s,
     ReadU8s,
-    ReadString,
-    ReadReconverString,
-    WriteBools,
-    WriteU16s,
-    WriteI16s,
-    WriteU32s,
-    WriteI32s,
-    WriteF32s,
-    WriteU64s,
-    WriteI64s,
-    WriteF64s,
     WriteU8s,
-    WriteString,
-    WriteReconverString,
+    ReadBits,
+    WriteBits,
 }
 
 impl FunctionCode {
@@ -56,13 +35,12 @@ impl FunctionCode {
     #[must_use]
     pub fn new(value: BytesMut) -> Option<Self> {
         match &value[..] {
-            [0x01, 0x04, 0x00, 0x00] => Some(Self::ReadBools), // 假设这对应 ReadBits
-            // [0x01, 0x04, 0x00, 0x00] => Some(Self::ReadU16s),  // 假设这对应 ReadWords
-            // [0x01, 0x04, 0x00, 0x00] => Some(Self::ReadI16s),
-            [0x01, 0x14, 0x01, 0x00] => Some(Self::WriteBools), // 对应 WriteMultipleBits
-            [0x01, 0x14, 0x00, 0x00] => Some(Self::WriteU16s),  // 对应 WriteMultipleWords
-            // [0x01, 0x14, 0x00, 0x00] => Some(Self::WriteI16s),  // 对应 WriteMultipleWords
-            _ => None, // 如果字节序列不匹配，返回 None
+            // MC协议格式: [指令代码(2字节), 子指令代码(2字节)]
+            [0x01, 0x04, 0x00, 0x00] => Some(Self::ReadU8s), // 兼容旧格式
+            [0x01, 0x14, 0x00, 0x00] => Some(Self::WriteU8s), // 兼容旧格式
+            [0x01, 0x04, 0x01, 0x00] => Some(Self::ReadBits), // bit读取
+            [0x01, 0x14, 0x01, 0x00] => Some(Self::WriteBits), // bit写入
+            _ => None,
         }
     }
 
@@ -71,80 +49,17 @@ impl FunctionCode {
     pub fn value(self) -> BytesMut {
         let mut buf = BytesMut::new();
         match self {
-            FunctionCode::ReadBools => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]); // 对应 ReadBits 的字节序列
-            }
-            FunctionCode::ReadU16s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadI16s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadU32s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadI32s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadF32s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadF64s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadU64s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadI64s => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
             FunctionCode::ReadU8s => {
                 buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadString => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadReconverString => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::ReadU8sAndBools => {
-                buf.extend_from_slice(&[0x01, 0x04, 0x00, 0x00]);
-            }
-            FunctionCode::WriteBools => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x01, 0x00]);
-            }
-            FunctionCode::WriteU16s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteI16s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteU32s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteI32s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteF32s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteU64s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteI64s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
-            }
-            FunctionCode::WriteF64s => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
             }
             FunctionCode::WriteU8s => {
                 buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
             }
-            FunctionCode::WriteString => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
+            FunctionCode::ReadBits => {
+                buf.extend_from_slice(&[0x01, 0x04, 0x01, 0x00]);
             }
-            FunctionCode::WriteReconverString => {
-                buf.extend_from_slice(&[0x01, 0x14, 0x00, 0x00]);
+            FunctionCode::WriteBits => {
+                buf.extend_from_slice(&[0x01, 0x14, 0x01, 0x00]);
             }
         }
         buf
@@ -161,31 +76,10 @@ impl Display for FunctionCode {
 // 请求的枚举，类似你给出的Modbus请求设计
 #[derive(Debug, Clone, PartialEq)]
 pub enum Request<'a> {
-    ReadU8sAndBools(Cow<'a, str>, Quantity),
-    ReadBools(Cow<'a, str>, Quantity),
-    ReadU16s(Cow<'a, str>, Quantity),
-    ReadI16s(Cow<'a, str>, Quantity),
-    ReadU32s(Cow<'a, str>, Quantity),
-    ReadI32s(Cow<'a, str>, Quantity),
-    ReadF32s(Cow<'a, str>, Quantity),
-    ReadF64s(Cow<'a, str>, Quantity),
-    ReadU64s(Cow<'a, str>, Quantity),
-    ReadI64s(Cow<'a, str>, Quantity),
     ReadU8s(Cow<'a, str>, Quantity),
-    ReadString(Cow<'a, str>, Quantity),
-    ReadReconverString(Cow<'a, str>, Quantity),
-    WriteBools(Cow<'a, str>, Cow<'a, [bool]>),
-    WriteU16s(Cow<'a, str>, Cow<'a, [u16]>),
-    WriteI16s(Cow<'a, str>, Cow<'a, [i16]>),
-    WriteU32s(Cow<'a, str>, Cow<'a, [u32]>),
-    WriteI32s(Cow<'a, str>, Cow<'a, [i32]>),
-    WriteF32s(Cow<'a, str>, Cow<'a, [f32]>),
-    WriteU64s(Cow<'a, str>, Cow<'a, [u64]>),
-    WriteI64s(Cow<'a, str>, Cow<'a, [i64]>),
-    WriteF64s(Cow<'a, str>, Cow<'a, [f64]>),
     WriteU8s(Cow<'a, str>, Cow<'a, [u8]>),
-    WriteString(Cow<'a, str>, String),
-    WriteReconverString(Cow<'a, str>, String),
+    ReadBits(Cow<'a, str>, Quantity),
+    WriteBits(Cow<'a, str>, Cow<'a, [bool]>),
 }
 
 // 实现辅助功能，比如将请求转换为'owned'版本或获取功能码
@@ -195,55 +89,14 @@ impl<'a> Request<'a> {
     pub fn into_owned(self) -> Request<'static> {
         use Request::*;
         match self {
-            ReadU8sAndBools(addr, qty) => ReadU8sAndBools(Cow::Owned(addr.into_owned()), qty),
-            ReadBools(addr, qty) => ReadBools(Cow::Owned(addr.into_owned()), qty),
-            ReadU16s(addr, qty) => ReadU16s(Cow::Owned(addr.into_owned()), qty),
-            ReadI16s(addr, qty) => ReadI16s(Cow::Owned(addr.into_owned()), qty),
-            ReadU32s(addr, qty) => ReadU32s(Cow::Owned(addr.into_owned()), qty),
-            ReadI32s(addr, qty) => ReadI32s(Cow::Owned(addr.into_owned()), qty),
-            ReadF32s(addr, qty) => ReadF32s(Cow::Owned(addr.into_owned()), qty),
-            ReadF64s(addr, qty) => ReadF64s(Cow::Owned(addr.into_owned()), qty),
-            ReadU64s(addr, qty) => ReadU64s(Cow::Owned(addr.into_owned()), qty),
-            ReadI64s(addr, qty) => ReadU64s(Cow::Owned(addr.into_owned()), qty),
-            ReadU8s(addr, qty) => ReadU64s(Cow::Owned(addr.into_owned()), qty),
-            ReadString(addr, qty) => ReadString(Cow::Owned(addr.into_owned()), qty),
-            ReadReconverString(addr, qty) => ReadReconverString(Cow::Owned(addr.into_owned()), qty),
-            WriteBools(addr, bools) => WriteBools(
-                Cow::Owned(addr.into_owned()),
-                Cow::Owned(bools.into_owned()),
-            ),
-
-            WriteU16s(addr, u16s) => {
-                WriteU16s(Cow::Owned(addr.into_owned()), Cow::Owned(u16s.into_owned()))
-            }
-            WriteI16s(addr, i16s) => {
-                WriteI16s(Cow::Owned(addr.into_owned()), Cow::Owned(i16s.into_owned()))
-            }
-            WriteU32s(addr, u32s) => {
-                WriteU32s(Cow::Owned(addr.into_owned()), Cow::Owned(u32s.into_owned()))
-            }
-            WriteI32s(addr, i32s) => {
-                WriteI32s(Cow::Owned(addr.into_owned()), Cow::Owned(i32s.into_owned()))
-            }
-            WriteF32s(addr, f32s) => {
-                WriteF32s(Cow::Owned(addr.into_owned()), Cow::Owned(f32s.into_owned()))
-            }
-
-            WriteU64s(addr, u64s) => {
-                WriteU64s(Cow::Owned(addr.into_owned()), Cow::Owned(u64s.into_owned()))
-            }
-            WriteI64s(addr, i64s) => {
-                WriteI64s(Cow::Owned(addr.into_owned()), Cow::Owned(i64s.into_owned()))
-            }
-            WriteF64s(addr, f64s) => {
-                WriteF64s(Cow::Owned(addr.into_owned()), Cow::Owned(f64s.into_owned()))
-            }
+            ReadU8s(addr, qty) => ReadU8s(Cow::Owned(addr.into_owned()), qty),
             WriteU8s(addr, u8s) => {
                 WriteU8s(Cow::Owned(addr.into_owned()), Cow::Owned(u8s.into_owned()))
             }
-            WriteString(addr, string) => WriteString(Cow::Owned(addr.into_owned()), string),
-
-            WriteReconverString(addr, string) => WriteReconverString(Cow::Owned(addr.into_owned()), string),
+            ReadBits(addr, qty) => ReadBits(Cow::Owned(addr.into_owned()), qty),
+            WriteBits(addr, bits) => {
+                WriteBits(Cow::Owned(addr.into_owned()), Cow::Owned(bits.into_owned()))
+            }
         }
     }
 
@@ -251,64 +104,20 @@ impl<'a> Request<'a> {
     pub const fn function_code(&self) -> FunctionCode {
         use Request::*;
         match self {
-            ReadU8sAndBools(_, _) => FunctionCode::ReadU8sAndBools,
-            ReadBools(_, _) => FunctionCode::ReadBools,
-            ReadU16s(_, _) => FunctionCode::ReadU16s,
-            ReadI16s(_, _) => FunctionCode::ReadI16s,
-            ReadU32s(_, _) => FunctionCode::ReadU32s,
-            ReadI32s(_, _) => FunctionCode::ReadI32s,
-            ReadF32s(_, _) => FunctionCode::ReadF32s,
-            ReadF64s(_, _) => FunctionCode::ReadF64s,
-            ReadU64s(_, _) => FunctionCode::ReadU64s,
-            ReadI64s(_, _) => FunctionCode::ReadI64s,
             ReadU8s(_, _) => FunctionCode::ReadU8s,
-            ReadString(_, _) => FunctionCode::ReadString,
-            ReadReconverString(_, _) => FunctionCode::ReadReconverString,
-            WriteBools(_, _) => FunctionCode::WriteBools,
-            WriteU16s(_, _) => FunctionCode::WriteU16s,
-            WriteI16s(_, _) => FunctionCode::WriteI16s,
-            WriteU32s(_, _) => FunctionCode::WriteU32s,
-            WriteI32s(_, _) => FunctionCode::WriteI32s,
-            WriteF32s(_, _) => FunctionCode::WriteF32s,
-            WriteU64s(_, _) => FunctionCode::WriteU64s,
-            WriteI64s(_, _) => FunctionCode::WriteI64s,
-            WriteF64s(_, _) => FunctionCode::WriteF64s,
             WriteU8s(_, _) => FunctionCode::WriteU8s,
-            WriteString(_, _) => FunctionCode::WriteString,
-            WriteReconverString(_, _) => FunctionCode::WriteReconverString,
+            ReadBits(_, _) => FunctionCode::ReadBits,
+            WriteBits(_, _) => FunctionCode::WriteBits,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Response {
-    ReadU8sAndBools(Vec<u8>, Vec<bool>),
-    ReadBools(Vec<bool>),
-    ReadU16s(Vec<u16>),
-    ReadI16s(Vec<i16>),
-    ReadU32s(Vec<u32>),
-    ReadI32s(Vec<i32>),
-    ReadF32s(Vec<f32>),
-    ReadF64s(Vec<f64>),
-    ReadU64s(Vec<u64>),
-    ReadI64s(Vec<i64>),
     ReadU8s(Vec<u8>),
-    ReadString(String),
-    ReadReconverString(String),
-    // WriteMultipleBits(Address, Quantity, SoftElementCode),
-    // WriteMultipleWords(Address, Quantity, SoftElementCode),
-    WriteBools(),
-    WriteU16s(),
-    WriteI16s(),
-    WriteU32s(),
-    WriteI32s(),
-    WriteF32s(),
-    WriteU64s(),
-    WriteI64s(),
-    WriteF64s(),
     WriteU8s(),
-    WriteString(),
-    WriteReconverString(),
+    ReadBits(Vec<bool>),
+    WriteBits(),
 }
 
 pub struct ResponseIterator {
@@ -326,34 +135,10 @@ impl Iterator for ResponseIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.response {
-            Response::ReadI16s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadU16s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadBools(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadU32s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadI32s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadF32s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadF64s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadU64s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
-            Response::ReadI64s(data) => data
-                .pop()
-                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
             Response::ReadU8s(data) => data
+                .pop()
+                .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
+            Response::ReadBits(data) => data
                 .pop()
                 .map(|val| Box::new(val) as Box<dyn std::fmt::Debug>),
             _ => None,
@@ -367,33 +152,20 @@ impl Response {
         use Response::*;
 
         match self {
-            ReadU8sAndBools(_, _) => FunctionCode::ReadU8sAndBools,
-            ReadBools(_) => FunctionCode::ReadBools,
-            ReadU16s(_) => FunctionCode::ReadU16s,
-            ReadI16s(_) => FunctionCode::ReadI16s,
-            ReadU32s(_) => FunctionCode::ReadU32s,
-            ReadI32s(_) => FunctionCode::ReadI32s,
-            ReadF32s(_) => FunctionCode::ReadF32s,
-            ReadF64s(_) => FunctionCode::ReadF64s,
-            ReadU64s(_) => FunctionCode::ReadU64s,
-            ReadI64s(_) => FunctionCode::ReadI64s,
             ReadU8s(_) => FunctionCode::ReadU8s,
-            ReadString(_) => FunctionCode::ReadString,
-            ReadReconverString(_) => FunctionCode::ReadReconverString,
-            // WriteMultipleBits(_, _, _) => FunctionCode::WriteMultipleBits,
-            // WriteMultipleWords(_, _, _) => FunctionCode::WriteMultipleWords,
-            WriteBools() => FunctionCode::WriteBools,
-            WriteU16s() => FunctionCode::WriteU16s,
-            WriteI16s() => FunctionCode::WriteI16s,
-            WriteU32s() => FunctionCode::WriteU32s,
-            WriteI32s() => FunctionCode::WriteI32s,
-            WriteF32s() => FunctionCode::WriteF32s,
-            WriteI64s() => FunctionCode::WriteI64s,
-            WriteU64s() => FunctionCode::WriteU64s,
-            WriteF64s() => FunctionCode::WriteF64s,
             WriteU8s() => FunctionCode::WriteU8s,
-            WriteString() => FunctionCode::WriteString,
-            WriteReconverString() => FunctionCode::WriteReconverString,
+            ReadBits(_) => FunctionCode::ReadBits,
+            WriteBits() => FunctionCode::WriteBits,
+        }
+    }
+
+    // 获取长度
+    pub fn len(&self) -> usize {
+        match self {
+            Response::ReadU8s(values) => values.len() / 2,
+            Response::WriteU8s() => 0,
+            Response::ReadBits(values) => values.len(),
+            Response::WriteBits() => 0,
         }
     }
 }
@@ -404,62 +176,60 @@ mod tests {
 
     #[test]
     fn new_function_code() {
+        // 测试旧格式兼容性
         assert_eq!(
-            FunctionCode::ReadBools,
+            FunctionCode::ReadU8s,
             FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]))
-                .expect("Failed to create FunctionCode from bytes")
+                .expect("Failed to create FunctionCode from legacy bytes")
         );
         assert_eq!(
-            FunctionCode::ReadBools,
-            FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]))
-                .expect("Failed to create FunctionCode from bytes")
-        );
-        assert_eq!(
-            FunctionCode::WriteBools,
-            FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]))
-                .expect("Failed to create FunctionCode from bytes")
+            FunctionCode::WriteU8s,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]))
+                .expect("Failed to create FunctionCode from legacy bytes")
         );
 
+        // 测试bit操作
         assert_eq!(
-            FunctionCode::WriteU16s,
-            FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]))
-                .expect("Failed to create FunctionCode from bytes")
+            FunctionCode::ReadBits,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x04, 0x01, 0x00][..]))
+                .expect("Failed to create FunctionCode for ReadBits")
+        );
+        assert_eq!(
+            FunctionCode::WriteBits,
+            FunctionCode::new(BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]))
+                .expect("Failed to create FunctionCode for WriteBits")
         );
     }
 
     #[test]
     fn function_code_values() {
-        let read_bits_bytes = BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]);
-        let read_words_bytes = BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]);
-        let write_multiple_bits_bytes = BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]);
-        let write_multiple_words_bytes = BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]);
+        let read_u8s_bytes = BytesMut::from(&[0x01, 0x04, 0x00, 0x00][..]);
+        let write_u8s_bytes = BytesMut::from(&[0x01, 0x14, 0x00, 0x00][..]);
+        let read_bits_bytes = BytesMut::from(&[0x01, 0x04, 0x01, 0x00][..]);
+        let write_bits_bytes = BytesMut::from(&[0x01, 0x14, 0x01, 0x00][..]);
 
-        // ReadBits 测试
         assert_eq!(
-            FunctionCode::ReadBools.value(),
+            FunctionCode::ReadU8s.value(),
+            read_u8s_bytes,
+            "ReadU8s byte sequence is incorrect"
+        );
+
+        assert_eq!(
+            FunctionCode::WriteU8s.value(),
+            write_u8s_bytes,
+            "WriteU8s byte sequence is incorrect"
+        );
+
+        assert_eq!(
+            FunctionCode::ReadBits.value(),
             read_bits_bytes,
             "ReadBits byte sequence is incorrect"
         );
 
-        // ReadWords 测试
         assert_eq!(
-            FunctionCode::ReadBools.value(),
-            read_words_bytes,
-            "ReadWords byte sequence is incorrect"
-        );
-
-        // WriteMultipleBits 测试
-        assert_eq!(
-            FunctionCode::WriteBools.value(),
-            write_multiple_bits_bytes,
-            "WriteMultipleBits byte sequence is incorrect"
-        );
-
-        // WriteMultipleWords 测试
-        assert_eq!(
-            FunctionCode::WriteU16s.value(),
-            write_multiple_words_bytes,
-            "WriteMultipleWords byte sequence is incorrect"
+            FunctionCode::WriteBits.value(),
+            write_bits_bytes,
+            "WriteBits byte sequence is incorrect"
         );
     }
 }

@@ -1,16 +1,14 @@
 use convert::convert_xy_number;
 pub use error::KVError;
-use regex::split_address;
 use map::find;
+use regex::split_address;
 use types::DataOProcess;
 
 mod convert;
+mod error;
 mod map;
 mod regex;
 mod types;
-mod error;
-
-
 
 pub fn convert_keyence_to_mitsubishi_address(address: &str) -> Result<String, KVError> {
     let (prefix, address) = split_address(address).ok_or(KVError::PaseError)?;
@@ -59,11 +57,10 @@ pub fn convert_keyence_to_mitsubishi_address(address: &str) -> Result<String, KV
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*; // 引入当前模块的所有项，假设 `convert_keyence_to_mitsubishi_address` 在当前模块内
+    use log;
 
     // 测试 convert_keyence_to_mitsubishi_address 函数
     #[test]
@@ -71,11 +68,10 @@ mod tests {
         let address = "X101";
         let result = convert_keyence_to_mitsubishi_address(address);
 
-        // 打印 result 以查看实际输出
-        println!("Result: {:?}", result);
+        // Debug output in test
+        log::debug!("Result: {:?}", result);
 
         // 你可以根据需要添加断言
-        assert!(result.is_ok());  // 只是一个示例，实际断言内容要根据函数的预期行为来定
+        assert!(result.is_ok()); // 只是一个示例，实际断言内容要根据函数的预期行为来定
     }
-
 }

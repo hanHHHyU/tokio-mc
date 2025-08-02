@@ -1,87 +1,96 @@
-use std::net::SocketAddr;
-use tokio::time::timeout;
+use std::{fmt, io, net::SocketAddr};
 
 use async_trait::async_trait;
-use byteorder::ByteOrder;
-use byteorder::LittleEndian;
-use bytes::Bytes;
+use futures_util::{SinkExt, StreamExt};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncWrite},
     net::TcpStream,
 };
+use tokio_util::codec::Framed;
 
-use crate::{header::ResponseHeader, Error,frame::TIMEOUT_DURATION};
+use crate::{codec::tcp::McClientCodec, Error};
 
 use super::{Client, Context, Request, Response};
 
-pub async fn connect(socket_addr: SocketAddr) -> Result<Context<TcpClient>,Error> {
-    // 等待 TcpClient::new 的 Future 完成，获得 TcpClient 实例
-    let tcp_client = TcpClient::new(socket_addr).await?;
-    let context: Context<TcpClient> = Context::<TcpClient>::new(tcp_client);
-    // 返回 `Ok(context)`，这是标准的 `Result` 类型
+/// Establish a direct connection to a MC TCP device
+pub async fn connect(socket_addr: SocketAddr) -> Result<Context<TcpClient>, Error> {
+    let transport = TcpStream::connect(socket_addr).await?;
+    let client = TcpClient::new(transport);
+    let context = Context::<TcpClient>::new(client);
     Ok(context)
 }
 
-#[derive(Debug)]
-pub struct TcpClient {
-    // stream: TcpStream, // 直接保存 TcpStream 实例
-    stream: TcpStream,
+/// Attach a new client context to a transport connection
+pub fn attach<T>(transport: T) -> Context<TcpClient<T>>
+where
+    T: AsyncRead + AsyncWrite + Send + Unpin + fmt::Debug + 'static,
+{
+    let client = TcpClient::new(transport);
+    Context::<TcpClient<T>>::new(client)
 }
 
-impl TcpClient {
-    /// 创建 TcpClient 实例并建立连接
-    pub async fn new(addr: SocketAddr) -> Result<Self, Error> {
-        let stream = TcpStream::connect(addr).await?;
-        Ok(Self { stream })
+#[derive(Debug)]
+pub struct TcpClient<T = TcpStream> {
+    framed: Option<Framed<T, McClientCodec>>,
+}
+
+impl<T> TcpClient<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    /// Create a new TcpClient with the given transport
+    pub fn new(transport: T) -> Self {
+        let framed = Framed::new(transport, McClientCodec::new());
+        Self {
+            framed: Some(framed),
+        }
+    }
+
+    fn framed(&mut self) -> io::Result<&mut Framed<T, McClientCodec>> {
+        let Some(framed) = &mut self.framed else {
+            return Err(io::Error::new(io::ErrorKind::NotConnected, "disconnected"));
+        };
+        Ok(framed)
+    }
+
+    async fn disconnect(&mut self) -> io::Result<()> {
+        if let Some(framed) = self.framed.take() {
+            // Proper cleanup of the connection
+            let transport = framed.into_inner();
+            drop(transport);
+        }
+        Ok(())
     }
 }
 
 #[async_trait]
-impl Client for TcpClient {
+impl<T> Client for TcpClient<T>
+where
+    T: fmt::Debug + AsyncRead + AsyncWrite + Send + Unpin,
+{
     async fn call(&mut self, request: Request<'_>) -> Result<Response, Error> {
-        let request_parts: Vec<Bytes> = Vec::try_from(request.clone()).unwrap();
+        let framed = self.framed()?;
 
-        let mut complete_response = Vec::new(); // 用于收集所有响应数据
+        // Clear any existing data in the read buffer
+        framed.read_buffer_mut().clear();
 
-        // println!("request_parts {:?}", request_parts.len());
+        // Send the request
+        framed.send(request.clone()).await?;
 
-        let header_len = ResponseHeader::new().len();
-
-        for part in request_parts {
-            // println!("Read {:?}", part);
-
-            // 1. 逐个发送 Vec<Bytes> 中的每个片段
-            self.stream.write_all(&part[..]).await?;
-
-            let mut header = vec![0; header_len];
-
-            // self.stream.read_exact(&mut header).await?;
-             // 使用 tokio::time::timeout 设置超时
-            timeout(TIMEOUT_DURATION, self.stream.read_exact(&mut header))
+        // Receive the raw response bytes
+        let raw_response = framed
+            .next()
             .await
-            .map_err(|_| Error::Transport(std::io::Error::new(std::io::ErrorKind::TimedOut, "Read header timed out")))?
-            .map_err(Error::Transport)?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "Connection closed"))??;
 
-            // println!("读取帧{:?}", header);
-
-            let frame_length = LittleEndian::read_u16(&header[header_len - 2..header_len]) as usize;
-            // 根据解析出的长度读取剩余帧
-            let mut buffer = vec![0; frame_length];
-            // // println!("读取帧长度{}", frame_length);
-            // self.stream.read_exact(&mut buffer).await?;
-            // 对剩余帧的读取同样设置超时
-            timeout(TIMEOUT_DURATION, self.stream.read_exact(&mut buffer))
-            .await
-            .map_err(|_| Error::Transport(std::io::Error::new(std::io::ErrorKind::TimedOut, "Read frame timed out")))?
-            .map_err(Error::Transport)?;
-
-            let response_bytes: Bytes = Bytes::copy_from_slice(&buffer);
-
-            complete_response.push(response_bytes);
-        }
-
-        let response = Response::try_from((complete_response, request))?;
+        // Convert raw bytes to Vec<Bytes> and use ClientDecoder for parsing
+        let bytes_vec = vec![raw_response];
+        let response = crate::codec::ClientDecoder::decode(bytes_vec, request)?;
 
         Ok(response)
+    }
+
+    async fn disconnect(&mut self) -> io::Result<()> {
+        self.disconnect().await
     }
 }
