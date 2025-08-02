@@ -1,9 +1,11 @@
 [package]
 name = "tokio-mc"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["YuhanCai <1046365096@qq.com>"]
 description = "A library for communication with PLCs using the MC protocol"
+keywords = ["plc", "mc-protocol", "industrial", "mitsubishi", "tokio"]
+categories = ["network-programming"]
 homepage = "https://github.com/hanHHHyU/tokio-mc"
 repository = "https://github.com/hanHHHyU/tokio-mc"
 license = "MIT"
