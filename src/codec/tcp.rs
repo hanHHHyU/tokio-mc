@@ -84,11 +84,9 @@ impl Decoder for McServerDecoder {
         let request_header = RequestHeader::new();
         let header_len = request_header.len();
 
-        // let response_header = ResponseHeader::new();
-        // let header_len = response_header.len();
+        log::debug!("Server received buffer (len={}): {:02X?}", buf.len(), &buf[..]);
 
-        log::debug!("Server received buffer: {:02X?}", &buf[..]);
-
+        // 首先检查是否有足够的数据读取头部
         if buf.len() < header_len {
             return Ok(None); // Need more data
         }
@@ -102,25 +100,31 @@ impl Decoder for McServerDecoder {
             ));
         }
 
-        // Extract data length from header
+        // Extract data length from header (位置: header_len - 4 到 header_len - 2)
         let len = usize::from(LittleEndian::read_u16(&buf[header_len - 4..header_len - 2]));
 
-        log::debug!("Data length: {}", len);
+        log::debug!("Data length from header: {}", len);
 
-        // if buf.len() < total_len {
-        //     return Ok(None); // Need more data
-        // }
+        // 计算完整帧的总长度
+        // 完整的帧 = 头部(9字节，不包括长度和监视定时器) + 长度字段(2字节) + 监视定时器(2字节) + 数据部分(len-2字节，因为len包含了监视定时器)
+        // 简化后：总长度 = header_len + len - 2
+        let total_len = header_len + len - 2;
+        
+        log::debug!("Total frame length needed: {}, buffer available: {}", total_len, buf.len());
+        
+        // 检查是否有足够的数据处理完整的帧
+        if buf.len() < total_len {
+            log::debug!("Not enough data for complete frame, waiting for more data");
+            return Ok(None); // Need more data
+        }
 
-        log::debug!("Server2 received buffer: {:02X?}", &buf[..]);
-
+        // 分离头部（不包括长度和监视定时器字段）
         let _header = buf.split_to(header_len - 4);
+        log::debug!("Header (without len/timer): {:02X?}", &_header[..]);
 
-        // 打印头部信息
-        log::debug!("Header: {:02X?}", &_header[..]);
-
-        // 2. 获取 payload 数据部分
+        // 获取剩余的payload部分（包括长度、监视定时器和实际数据）
         let payload = buf.split_to(len + 2);
-        log::debug!("Payload: {:02X?}", &payload[..]);
+        log::debug!("Payload (with len/timer/data): {:02X?}", &payload[..]);
 
         Ok(Some(payload.into()))
     }
