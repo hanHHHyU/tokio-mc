@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio_mc::{
     client::{tcp::*, Writer},
     frame::Model,
@@ -11,7 +12,9 @@ async fn main() -> Result<(), Error> {
         .parse::<SocketAddr>()
         .map_err(|e| Error::Transport(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 
-    let mut context = connect(addr).await?;
+    // Use connection with timeout (5s timeout)
+    let mut context = connect_with_timeout(addr, Duration::from_secs(5)).await?;
+    println!("Connected successfully (5s timeout)");
 
     context.set_plc_model(Model::Keyence);
 
