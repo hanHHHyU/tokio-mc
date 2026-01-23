@@ -35,7 +35,12 @@ pub fn connect_with_timeout(
     let tcp_client = runtime.block_on(async {
         let stream = tokio::time::timeout(connect_timeout, TcpStream::connect(socket_addr))
             .await
-            .map_err(|_| Error::Transport(io::Error::new(io::ErrorKind::TimedOut, "Connection timeout")))?
+            .map_err(|_| {
+                Error::Transport(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Connection timeout",
+                ))
+            })?
             .map_err(Error::Transport)?;
         Ok::<TcpClient, Error>(TcpClient::new(stream))
     })?;

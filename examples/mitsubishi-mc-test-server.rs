@@ -99,7 +99,6 @@ impl Service for MitsubishiMcTestServer {
                             // 转换为小端字节序
                             let bytes = word_value.to_le_bytes();
                             result.extend_from_slice(&bytes);
-
                         }
 
                         log::info!(
@@ -196,7 +195,6 @@ impl Service for MitsubishiMcTestServer {
                                 if bit_addr < data.len() {
                                     let bit_value = (word_value >> bit_idx) & 1 != 0;
                                     data[bit_addr] = bit_value;
-
                                 }
                             }
 
@@ -278,7 +276,6 @@ impl Service for MitsubishiMcTestServer {
                             if bit_addr < data.len() {
                                 let bit_value = data[bit_addr];
                                 result_bits.push(bit_value);
-
                             } else {
                                 result_bits.push(false); // 超出范围返回false
                                 log::warn!("Bit {} out of range, bit_addr: {}", i, bit_addr);

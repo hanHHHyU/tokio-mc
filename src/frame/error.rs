@@ -13,6 +13,12 @@ pub enum ProtocolError {
 
     #[error("This functionality is not yet implemented.")]
     NotImplemented,
+
+    #[error("Unexpected response type: expected {expected}, got {actual}")]
+    UnexpectedResponse {
+        expected: &'static str,
+        actual: &'static str,
+    },
 }
 
 pub fn map_error_code(error_code: u16) -> Option<ProtocolError> {

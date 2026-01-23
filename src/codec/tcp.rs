@@ -6,10 +6,20 @@ use log;
 use std::io::Result;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::{frame::Request, header::ResponseHeader};
+use super::constants::{
+    LENGTH_FIELD_SIZE, MC_3E_RESPONSE_PREFIX, MIN_RESPONSE_LENGTH, RESPONSE_HEADER_LENGTH,
+    RESPONSE_LENGTH_FIELD_OFFSET,
+};
+#[cfg(feature = "server")]
+use super::constants::{
+    MC_3E_REQUEST_PREFIX, PREFIX_LENGTH, REQUEST_HEADER_LENGTH, REQUEST_LENGTH_FIELD_OFFSET,
+    RESPONSE_END_CODE_LENGTH, TIMER_FIELD_SIZE,
+};
+
+use crate::frame::Request;
 
 #[cfg(feature = "server")]
-use crate::{frame::Response, header::RequestHeader};
+use crate::{frame::Response, header::ResponseHeader};
 
 #[derive(Debug, Default)]
 pub(crate) struct McClientDecoder;
@@ -42,18 +52,17 @@ impl Decoder for McClientDecoder {
     type Error = std::io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Bytes>> {
-        let response_header = ResponseHeader::new();
-        let header_len = response_header.len();
+        let header_len = RESPONSE_HEADER_LENGTH;
 
-        if buf.len() < header_len {
+        if buf.len() < MIN_RESPONSE_LENGTH {
             return Ok(None); // Need more data
         }
 
         log::debug!("Client received buffer: {:02X?}", &buf[..]);
 
         // 客户端解析服务端响应 - 验证响应前缀 (D0 00 00 FF FF 03 00)
-        let response_prefix = [0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
-        if buf[..response_prefix.len()] != response_prefix {
+
+        if buf[..MC_3E_RESPONSE_PREFIX.len()] != MC_3E_RESPONSE_PREFIX {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid MC response prefix: {:02X?}", &buf[..header_len]),
@@ -61,7 +70,10 @@ impl Decoder for McClientDecoder {
         }
 
         // Extract data length from header
-        let len = usize::from(LittleEndian::read_u16(&buf[header_len - 2..header_len]));
+
+        let len = usize::from(LittleEndian::read_u16(
+            &buf[RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        ));
         let total_len = header_len + len;
 
         if buf.len() < total_len {
@@ -69,6 +81,7 @@ impl Decoder for McClientDecoder {
         }
 
         // Extract complete frame and return payload only
+
         let mut complete_frame = buf.split_to(total_len);
         let payload = complete_frame.split_off(header_len).freeze();
         Ok(Some(payload))
@@ -81,19 +94,23 @@ impl Decoder for McServerDecoder {
     type Error = std::io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Bytes>> {
-        let request_header = RequestHeader::new();
-        let header_len = request_header.len();
+        let header_len = REQUEST_HEADER_LENGTH;
 
-        log::debug!("Server received buffer (len={}): {:02X?}", buf.len(), &buf[..]);
+        log::debug!(
+            "Server received buffer (len={}): {:02X?}",
+            buf.len(),
+            &buf[..]
+        );
 
         // 首先检查是否有足够的数据读取头部
+
         if buf.len() < header_len {
             return Ok(None); // Need more data
         }
 
         // 服务端解析客户端请求 - 验证请求前缀 (50 00 00 FF FF 03 00)
-        let request_prefix = [0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
-        if buf[..request_prefix.len()] != request_prefix {
+
+        if buf[..MC_3E_REQUEST_PREFIX.len()] != MC_3E_REQUEST_PREFIX {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid MC request prefix: {:02X?}", &buf[..header_len]),
@@ -101,29 +118,38 @@ impl Decoder for McServerDecoder {
         }
 
         // Extract data length from header (位置: header_len - 4 到 header_len - 2)
-        let len = usize::from(LittleEndian::read_u16(&buf[header_len - 4..header_len - 2]));
+
+        let len = usize::from(LittleEndian::read_u16(
+            &buf[REQUEST_LENGTH_FIELD_OFFSET..REQUEST_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        ));
 
         log::debug!("Data length from header: {}", len);
 
-        // 计算完整帧的总长度
-        // 完整的帧 = 头部(9字节，不包括长度和监视定时器) + 长度字段(2字节) + 监视定时器(2字节) + 数据部分(len-2字节，因为len包含了监视定时器)
-        // 简化后：总长度 = header_len + len - 2
-        let total_len = header_len + len - 2;
-        
-        log::debug!("Total frame length needed: {}, buffer available: {}", total_len, buf.len());
-        
+        // 计算完整帧的总长度：头部(9字节，不包括长度和监视定时器) + 长度字段(2字节) + 监视定时器(2字节) + 数据部分(len-2字节，因为len包含了监视定时器)
+        // 简化后：总长度 = header_len + len - TIMER_FIELD_SIZE
+        let total_len = header_len + len - TIMER_FIELD_SIZE;
+
+        log::debug!(
+            "Total frame length needed: {}, buffer available: {}",
+            total_len,
+            buf.len()
+        );
+
         // 检查是否有足够的数据处理完整的帧
+
         if buf.len() < total_len {
             log::debug!("Not enough data for complete frame, waiting for more data");
             return Ok(None); // Need more data
         }
 
         // 分离头部（不包括长度和监视定时器字段）
-        let _header = buf.split_to(header_len - 4);
+
+        let _header = buf.split_to(PREFIX_LENGTH);
         log::debug!("Header (without len/timer): {:02X?}", &_header[..]);
 
         // 获取剩余的payload部分（包括长度、监视定时器和实际数据）
-        let payload = buf.split_to(len + 2);
+
+        let payload = buf.split_to(len + LENGTH_FIELD_SIZE);
         log::debug!("Payload (with len/timer/data): {:02X?}", &payload[..]);
 
         Ok(Some(payload.into()))
@@ -178,6 +204,7 @@ impl Encoder<Response> for ServerCodec {
         let response_header_len = response_header.len();
 
         // 添加调试打印
+
         log::debug!("=== ServerCodec::encode Debug ===");
         log::debug!("Response item: {:?}", item);
         log::debug!("Item length: {}", item.len());
@@ -187,11 +214,14 @@ impl Encoder<Response> for ServerCodec {
         let mut header_bytes = BytesMut::from(&response_header.0[..]);
 
         // 计算数据长度
+
         let data_length = match &item {
-            Response::ReadU8s(_) => (item.len() * 2 + 2) as u16,
-            Response::WriteU8s() => 2,
-            Response::ReadBits(values) => ((values.len() + 1) / 2 + 2) as u16,
-            Response::WriteBits() => 2,
+            Response::ReadU8s(_) => (item.len() * 2 + RESPONSE_END_CODE_LENGTH) as u16,
+            Response::WriteU8s() => RESPONSE_END_CODE_LENGTH as u16,
+            Response::ReadBits(values) => {
+                ((values.len() + 1) / 2 + RESPONSE_END_CODE_LENGTH) as u16
+            }
+            Response::WriteBits() => RESPONSE_END_CODE_LENGTH as u16,
         };
         log::debug!("Calculated data length: {}", data_length);
 
@@ -240,7 +270,7 @@ impl Encoder<Response> for ServerCodec {
 mod tests {
     use super::*;
     #[cfg(feature = "server")]
-    use crate::{frame::Response, header::RequestHeader};
+    use crate::frame::Response;
     #[cfg(feature = "server")]
     use bytes::{Buf, BytesMut};
 
@@ -256,7 +286,8 @@ mod tests {
         codec.encode(response, &mut buf).unwrap();
 
         // Verify header length
-        assert!(buf.len() >= 9); // At least 9 bytes for header
+
+        assert!(buf.len() >= RESPONSE_HEADER_LENGTH); // At least header bytes
     }
 
     #[test]
@@ -266,19 +297,24 @@ mod tests {
         let mut buf = BytesMut::new();
 
         // 测试写操作的响应
+
         let response = Response::WriteU8s();
 
         codec.encode(response, &mut buf).unwrap();
 
         // 验证头部
-        let header_bytes = buf.split_to(9);
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        assert_eq!(data_length, 2); // 只有2字节的结束代码
 
-        // 验证结束代码
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        assert_eq!(data_length, RESPONSE_END_CODE_LENGTH as u16); // 只有2字节的结束代码
+                                                                  // 验证结束代码
         assert_eq!(buf.get_u16_le(), 0x0000);
 
         // 写操作不应该有额外数据
+
         assert_eq!(buf.len(), 0);
     }
 
@@ -289,6 +325,7 @@ mod tests {
         let mut buf = BytesMut::new();
 
         // 测试读取位数据的响应
+
         let bits = vec![true, false, true, false, true, false];
         let response = Response::ReadBits(bits.clone());
 
@@ -297,24 +334,32 @@ mod tests {
         // println!("Encoded buffer: {:02X?}", &buf[..]);
 
         // 验证头部长度（9字节）
-        assert!(buf.len() >= 9);
+
+        assert!(buf.len() >= RESPONSE_HEADER_LENGTH);
 
         // 分离头部
-        let header_bytes = buf.split_to(9);
+
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
 
         // 验证响应头前缀 (D0 00 00 FF FF 03 00)
-        let expected_header_prefix = [0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
-        assert_eq!(&header_bytes[..7], expected_header_prefix);
+
+        assert_eq!(&header_bytes[..7], MC_3E_RESPONSE_PREFIX);
 
         // 验证数据长度计算是否正确
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        let expected_length = ((bits.len() + 1) / 2 + 2) as u16; // bit数据 + 结束码
+
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        let expected_length = ((bits.len() + 1) / 2 + RESPONSE_END_CODE_LENGTH) as u16; // bit data + end code
         assert_eq!(data_length, expected_length);
 
         // 验证结束代码 (0x0000)
+
         assert_eq!(buf.get_u16_le(), 0x0000);
 
         // 验证bit数据编码
+
         let encoded_bits = crate::codec::bools_to_bytes(&bits);
         let bit_data = buf.chunk();
         assert_eq!(bit_data, &encoded_bits[..]);
@@ -333,7 +378,7 @@ mod tests {
 
             codec.encode(response, &mut buf).unwrap();
 
-            let _header = buf.split_to(9);
+            let _header = buf.split_to(RESPONSE_HEADER_LENGTH);
             let _end_code = buf.get_u16_le();
 
             let expected_bits = crate::codec::bools_to_bytes(&bits);
@@ -348,7 +393,7 @@ mod tests {
 
             codec.encode(response, &mut buf).unwrap();
 
-            let _header = buf.split_to(9);
+            let _header = buf.split_to(RESPONSE_HEADER_LENGTH);
             let _end_code = buf.get_u16_le();
 
             let expected_bits = crate::codec::bools_to_bytes(&bits);
@@ -363,7 +408,7 @@ mod tests {
 
             codec.encode(response, &mut buf).unwrap();
 
-            let _header = buf.split_to(9);
+            let _header = buf.split_to(RESPONSE_HEADER_LENGTH);
             let _end_code = buf.get_u16_le();
 
             let expected_bits = crate::codec::bools_to_bytes(&bits);
@@ -378,23 +423,31 @@ mod tests {
         let mut buf = BytesMut::new();
 
         // 测试奇数长度的位数据
+
         let bits = vec![true, false, true]; // 3个位
         let response = Response::ReadBits(bits.clone());
 
         codec.encode(response, &mut buf).unwrap();
 
         // 分离头部
-        let header_bytes = buf.split_to(9);
+
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
 
         // 验证数据长度 - 奇数长度应该向上取整
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        let expected_length = ((bits.len() + 1) / 2 + 2) as u16; // (3+1)/2 + 2 = 4
+
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        let expected_length = ((bits.len() + 1) / 2 + RESPONSE_END_CODE_LENGTH) as u16; // (3+1)/2 + end code = 4
         assert_eq!(data_length, expected_length);
 
         // 跳过结束代码
+
         let _end_code = buf.get_u16_le();
 
         // 验证编码后的位数据
+
         let encoded_bits = crate::codec::bools_to_bytes(&bits);
         let bit_data = buf.chunk();
         assert_eq!(bit_data, &encoded_bits[..]);
@@ -411,23 +464,31 @@ mod tests {
         let mut buf = BytesMut::new();
 
         // 测试空的位数据
+
         let bits: Vec<bool> = vec![];
         let response = Response::ReadBits(bits.clone());
 
         codec.encode(response, &mut buf).unwrap();
 
         // 分离头部
-        let header_bytes = buf.split_to(9);
+
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
 
         // 验证数据长度 - 空数据应该只有结束码
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        let expected_length = 2u16; // 只有结束码
+
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        let expected_length = RESPONSE_END_CODE_LENGTH as u16; // end code only
         assert_eq!(data_length, expected_length);
 
         // 验证结束代码
+
         assert_eq!(buf.get_u16_le(), 0x0000);
 
         // 空数据后不应该有额外的位数据
+
         assert_eq!(buf.len(), 0);
     }
 
@@ -438,23 +499,31 @@ mod tests {
         let mut buf = BytesMut::new();
 
         // 测试大量位数据
+
         let bits: Vec<bool> = (0..100).map(|i| i % 2 == 0).collect();
         let response = Response::ReadBits(bits.clone());
 
         codec.encode(response, &mut buf).unwrap();
 
         // 分离头部
-        let header_bytes = buf.split_to(9);
+
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
 
         // 验证数据长度
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        let expected_length = ((bits.len() + 1) / 2 + 2) as u16;
+
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        let expected_length = ((bits.len() + 1) / 2 + RESPONSE_END_CODE_LENGTH) as u16;
         assert_eq!(data_length, expected_length);
 
         // 跳过结束代码
+
         let _end_code = buf.get_u16_le();
 
         // 验证编码后的位数据长度
+
         let encoded_bits = crate::codec::bools_to_bytes(&bits);
         assert_eq!(buf.len(), encoded_bits.len());
         assert_eq!(buf.chunk(), &encoded_bits[..]);
@@ -467,25 +536,33 @@ mod tests {
         let mut buf = BytesMut::new();
 
         // 测试写位操作的响应
+
         let response = Response::WriteBits();
 
         codec.encode(response, &mut buf).unwrap();
 
         // 验证头部
-        let header_bytes = buf.split_to(9);
+
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
 
         // 验证响应头前缀 (D0 00 00 FF FF 03 00)
-        let expected_header_prefix = [0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
-        assert_eq!(&header_bytes[..7], expected_header_prefix);
+
+        assert_eq!(&header_bytes[..7], MC_3E_RESPONSE_PREFIX);
 
         // 验证数据长度 - 写操作只有结束码
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        assert_eq!(data_length, 2);
+
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        assert_eq!(data_length, RESPONSE_END_CODE_LENGTH as u16);
 
         // 验证结束代码
+
         assert_eq!(buf.get_u16_le(), 0x0000);
 
         // 写操作不应该有额外数据
+
         assert_eq!(buf.len(), 0);
     }
 
@@ -498,30 +575,32 @@ mod tests {
         ];
 
         // 创建一个空的 BytesMut 缓冲区
+
         let mut buffer = BytesMut::with_capacity(1024);
 
         // 将 header_bytes 添加到缓冲区
         buffer.extend_from_slice(&bytes);
 
         // 创建ServerCodec实例
+
         let mut codec = ServerCodec {
             decoder: McServerDecoder {},
         };
 
         // 调用decode方法
+
         let result = codec.decode(&mut buffer);
 
         // 基本验证结果是Ok
+
         assert!(result.is_ok(), "解码过程应该成功");
     }
 
     #[test]
     fn test_bits_direct_u8_operations() {
-        // 测试位操作直接操作底层u8数据的场景
-        // 模拟multi-zone-server-test中的位操作方式
-
+        // 测试位操作直接操作底层u8数据的场景；模拟multi-zone-server-test中的位操作方式
         // 创建一个字节用于测试
-        let mut test_byte: u8 = 0b00000000; // 初始值：所有位都是0
+        let mut test_byte: u8 = 0b00000000; // 鍒濆鍊硷細鎵€鏈変綅閮芥槸0
 
         // 设置第0位为1 (LSB)
         test_byte |= 1 << 0;
@@ -537,9 +616,11 @@ mod tests {
 
         // 清除第0位
         test_byte &= !(1 << 0);
+
         assert_eq!(test_byte, 0b10000100);
 
         // 测试读取位值
+
         let bit_0 = (test_byte >> 0) & 0x01 != 0;
         let bit_2 = (test_byte >> 2) & 0x01 != 0;
         let bit_7 = (test_byte >> 7) & 0x01 != 0;
@@ -552,13 +633,10 @@ mod tests {
     #[test]
     #[cfg(feature = "server")]
     fn test_encode_read_bits_simulating_server_behavior() {
-        // 测试模拟实际服务器行为的位读取编码
-        // 这里我们创建响应数据，就像multi-zone-server-test会返回的那样
-
+        // 测试模拟实际服务器行为的位读取编码；这里我们创建响应数据，就像multi-zone-server-test会返回的那样
         let mut codec = ServerCodec::default();
 
-        // 模拟从服务器底层u8数据中读取的位
-        // 假设底层数据是: [0b10100101, 0b11000011]
+        // 模拟从服务器底层u8数据中读取的位；假设底层数据是: [0b10100101, 0b11000011]
         // 这应该解析为位: [true, false, true, false, false, true, false, true, true, true, false, false, false, false, true, true]
         let simulated_u8_data = vec![0b10100101u8, 0b11000011u8];
 
@@ -571,25 +649,33 @@ mod tests {
         }
 
         // 现在测试编码这些位数据
+
         let mut buf = BytesMut::new();
         let response = Response::ReadBits(simulated_bits.clone());
 
         codec.encode(response, &mut buf).unwrap();
 
         // 验证编码
-        let header_bytes = buf.split_to(9);
-        let data_length = LittleEndian::read_u16(&header_bytes[7..9]);
-        let expected_length = ((simulated_bits.len() + 1) / 2 + 2) as u16;
+
+        let header_bytes = buf.split_to(RESPONSE_HEADER_LENGTH);
+        let data_length = LittleEndian::read_u16(
+            &header_bytes
+                [RESPONSE_LENGTH_FIELD_OFFSET..RESPONSE_LENGTH_FIELD_OFFSET + LENGTH_FIELD_SIZE],
+        );
+        let expected_length = ((simulated_bits.len() + 1) / 2 + RESPONSE_END_CODE_LENGTH) as u16;
         assert_eq!(data_length, expected_length);
 
         // 跳过结束代码
+
         let _end_code = buf.get_u16_le();
 
         // 验证编码后的数据
+
         let encoded_bits = crate::codec::bools_to_bytes(&simulated_bits);
         assert_eq!(buf.chunk(), &encoded_bits[..]);
 
         // 验证往返转换：编码后再解码应该得到相同的位数据
+
         let decoded_bits = crate::codec::bytes_to_bools(&encoded_bits);
         // 注意：由于我们的编码是2位一组，解码会产生更多的位，所以只比较原始长度
         assert_eq!(&decoded_bits[..simulated_bits.len()], &simulated_bits[..]);
@@ -605,11 +691,11 @@ mod tests {
         // 小端序字节: [0x0B, 0x00]
         // M100 的字节偏移: 100 * 2 = 200
         // 所以字节 200=0x0B, 字节 201=0x00
-
         let simulated_memory = vec![0u8; 4000]; // 模拟 4000 字节内存
         let mut memory = simulated_memory;
 
         // 模拟写入 M100 = 11 (u16)
+
         let value_11_bytes = 11u16.to_le_bytes(); // [0x0B, 0x00]
         let m100_byte_offset = 100 * 2; // 200
         memory[m100_byte_offset] = value_11_bytes[0]; // 0x0B
@@ -620,6 +706,7 @@ mod tests {
         let base_byte_offset = 100 * 2; // 200，与字操作相同的映射
 
         // 读取前16位 (一个字的所有位)
+
         let mut result_bits = Vec::new();
         for i in 0..16 {
             let bit_in_word = i % 16;
@@ -646,6 +733,7 @@ mod tests {
         assert_eq!(result_bits, expected_bits);
 
         // 特别验证第0位应该是 true (因为11的LSB是1)
+
         assert_eq!(
             result_bits[0], true,
             "M100 位0应该是 true，因为值11的第0位是1"
@@ -666,25 +754,24 @@ mod tests {
 
     #[test]
     fn test_mitsubishi_mc_protocol_x_zone_mapping() {
-        // 测试三菱MC协议X区域的特殊映射规则
-        // 实际寄存器：X0, X10, X20, X30...
+        // 测试三菱MC协议X区域的特殊映射规则；实际寄存器：X0, X10, X20, X30...
         // 位地址：X0-X15对应X0字，X16-X31对应X10字...
-
         let simulated_memory = vec![0u8; 4000]; // 模拟 4000 字节内存
         let mut memory = simulated_memory;
 
         // 模拟写入 X0 = 0x1234 (存储在字节0-1)
+
         let x0_bytes = 0x1234u16.to_le_bytes(); // [0x34, 0x12]
         memory[0] = x0_bytes[0]; // 0x34
         memory[1] = x0_bytes[1]; // 0x12
 
         // 模拟写入 X10 = 0x5678 (存储在字节20-21，因为X10的地址是10，10*2=20)
+
         let x10_bytes = 0x5678u16.to_le_bytes(); // [0x78, 0x56]
         memory[20] = x10_bytes[0]; // 0x78
         memory[21] = x10_bytes[1]; // 0x56
 
         // 测试位读取（使用三菱MC协议规则）
-
         // 测试 X0 位（应该读取X0字的第0位）
         // bit_addr = 0, word_register = 0*10 = 0 (X0), bit_in_word = 0
         // byte_offset = 0*2 + 0/8 = 0, bit_offset = 0%8 = 0
@@ -737,6 +824,7 @@ mod tests {
         let x1_byte2_value = memory[actual_byte_offset]; // 0x78
 
         // X1 u8读取应该返回 [0x12, 0x78]
+
         assert_eq!(
             x1_byte1_value, 0x12,
             "X1 u8读取第1字节应该是0x12 (X0的高字节)"
@@ -745,7 +833,6 @@ mod tests {
             x1_byte2_value, 0x78,
             "X1 u8读取第2字节应该是0x78 (X10的低字节)"
         );
-
-        log::info!("三菱MC协议X区域映射测试通过！");
+        log::info!("Mitsubishi MC protocol X-zone mapping test passed.");
     }
 }

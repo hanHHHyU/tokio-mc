@@ -13,6 +13,8 @@ use crate::{
     header::RequestHeader,
     Error,
 };
+
+pub(crate) mod constants;
 pub mod tcp;
 
 /// 优化的bool到字节转换，使用预分配和更高效的位操作
@@ -185,7 +187,7 @@ impl TryFrom<(Vec<Bytes>, Request<'_>)> for Response {
         //     data.extend_from_slice(&byte[2..]);
         // }
 
-        for (i, byte) in bytes.iter().enumerate() {
+        for byte in bytes.iter() {
             // // 确保至少有 2 字节结束码
             // if byte.len() < 2 {
             //     return Err(Error::Protocol(format!("Response too short: {:?}", byte)));

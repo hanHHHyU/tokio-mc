@@ -6,6 +6,7 @@ pub mod tcp;
 use async_trait::async_trait;
 use std::{borrow::Cow, fmt::Debug};
 
+use crate::address::{converter_for_model, AddressConverter};
 use crate::frame::*;
 use crate::Error;
 
@@ -111,19 +112,23 @@ pub trait Writer: Client {
 pub struct Context<T: Client> {
     client: T,
     model: Model, // 新增字段
+    address_converter: Box<dyn AddressConverter>,
 }
 
 impl<T: Client> Context<T> {
     pub fn new(client: T) -> Self {
+        let model = Model::default();
         Self {
             client,
-            model: Model::default(), // 使用默认值
+            model,
+            address_converter: converter_for_model(model),
         }
     }
 
     /// 设置 PLC 型号
     pub fn set_plc_model(&mut self, model: Model) {
         self.model = model;
+        self.address_converter = converter_for_model(model);
     }
 
     /// Disconnect the client connection
@@ -135,20 +140,24 @@ impl<T: Client> Context<T> {
     where
         A: AsRef<str> + ?Sized,
     {
-        match self.model {
-            Model::Keyence => {
-                // 调用地址转换方法
-                match convert_keyence_to_mitsubishi_address(addr.as_ref()) {
-                    Ok(converted_addr) => Ok(converted_addr),
-                    Err(e) => Err(Error::KV(e)),
-                }
-            }
-            Model::Mitsubishi => {
-                // Mitsubishi 不进行处理，直接返回地址
-                Ok(addr.as_ref().to_string())
-            }
-        }
+        self.address_converter.convert(addr.as_ref())
     }
+}
+
+fn response_kind(response: &Response) -> &'static str {
+    match response {
+        Response::ReadU8s(_) => "ReadU8s",
+        Response::WriteU8s() => "WriteU8s",
+        Response::ReadBits(_) => "ReadBits",
+        Response::WriteBits() => "WriteBits",
+    }
+}
+
+fn unexpected_response(expected: &'static str, response: Response) -> Error {
+    Error::Protocol(ProtocolError::UnexpectedResponse {
+        expected,
+        actual: response_kind(&response),
+    })
 }
 
 #[async_trait]
@@ -169,9 +178,7 @@ impl<T: Client> Reader for Context<T> {
             .await
             .map(|response| match response {
                 Response::ReadU8s(u8s) => Ok(u8s),
-                _ => {
-                    unreachable!("Unexpected response type, expected ReadU8s")
-                }
+                other => Err(unexpected_response("ReadU8s", other)),
             })
             .and_then(|result| result)
     }
@@ -327,9 +334,7 @@ impl<T: Client> Reader for Context<T> {
             .await
             .map(|response| match response {
                 Response::ReadBits(u8s) => Ok(u8s),
-                _ => {
-                    unreachable!("Unexpected response type, expected ReadBits")
-                }
+                other => Err(unexpected_response("ReadBits", other)),
             })
             .and_then(|result| result)
     }
@@ -349,7 +354,7 @@ impl<T: Client> Writer for Context<T> {
             .await
             .map(|response| match response {
                 Response::WriteU8s() => Ok(()),
-                _ => unreachable!("Unexpected response type, expected WriteU8s"),
+                other => Err(unexpected_response("WriteU8s", other)),
             })
             .and_then(|result| result)
     }
@@ -366,7 +371,7 @@ impl<T: Client> Writer for Context<T> {
             .await
             .map(|response| match response {
                 Response::WriteBits() => Ok(()),
-                _ => unreachable!("Unexpected response type, expected WriteBits"),
+                other => Err(unexpected_response("WriteBits", other)),
             })
             .and_then(|result| result)
     }
@@ -469,4 +474,420 @@ impl<T: Client> Writer for Context<T> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod context_tests {
+    use super::*;
+    use crate::frame::{Model, Request, Response, LIMIT};
+    use crate::test_common::MockClient;
+    use crate::Error;
+
+    fn assert_write_u8s_request(
+        ctx: &Context<MockClient>,
+        expected_addr: &str,
+        expected_data: &[u8],
+    ) {
+        let request = ctx
+            .client
+            .requests()
+            .last()
+            .expect("expected a request to be recorded");
+        match request {
+            Request::WriteU8s(addr, data) => {
+                assert_eq!(addr.as_ref(), expected_addr);
+                assert_eq!(data.as_ref(), expected_data);
+            }
+            other => panic!("expected WriteU8s request, got {other:?}"),
+        }
+    }
+
+    fn assert_write_bits_request(
+        ctx: &Context<MockClient>,
+        expected_addr: &str,
+        expected_bits: &[bool],
+    ) {
+        let request = ctx
+            .client
+            .requests()
+            .last()
+            .expect("expected a request to be recorded");
+        match request {
+            Request::WriteBits(addr, bits) => {
+                assert_eq!(addr.as_ref(), expected_addr);
+                assert_eq!(bits.as_ref(), expected_bits);
+            }
+            other => panic!("expected WriteBits request, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_context_read_u8s() {
+        let mock = MockClient::new().expect_response(Response::ReadU8s(vec![0x12, 0x34]));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_u8s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![0x12, 0x34]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_u8s_empty() {
+        let mock = MockClient::new().expect_response(Response::ReadU8s(Vec::new()));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_u8s("D100", 0).await;
+
+        assert_eq!(result.unwrap(), Vec::<u8>::new());
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_u8s_max() {
+        let expected = vec![0xAB; LIMIT as usize];
+        let mock = MockClient::new().expect_response(Response::ReadU8s(expected.clone()));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_u8s("D100", LIMIT).await;
+
+        assert_eq!(result.unwrap(), expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_u16s() {
+        let mock =
+            MockClient::new().expect_response(Response::ReadU8s(vec![0x34, 0x12, 0x78, 0x56]));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_u16s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![0x1234, 0x5678]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_i16s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(-2i16).to_le_bytes());
+        bytes.extend_from_slice(&(42i16).to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_i16s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![-2, 42]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_u32s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0x12345678u32.to_le_bytes());
+        bytes.extend_from_slice(&0x90ABCDEFu32.to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_u32s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![0x12345678, 0x90ABCDEF]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_i32s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(-2i32).to_le_bytes());
+        bytes.extend_from_slice(&(42i32).to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_i32s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![-2, 42]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_f32s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&1.5f32.to_le_bytes());
+        bytes.extend_from_slice(&(-2.5f32).to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_f32s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![1.5, -2.5]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_u64s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0x1122334455667788u64.to_le_bytes());
+        bytes.extend_from_slice(&0x99AABBCCDDEEFF00u64.to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_u64s("D100", 2).await;
+
+        assert_eq!(
+            result.unwrap(),
+            vec![0x1122334455667788, 0x99AABBCCDDEEFF00]
+        );
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_i64s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(-2i64).to_le_bytes());
+        bytes.extend_from_slice(&(42i64).to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_i64s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![-2, 42]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_f64s() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&1.5f64.to_le_bytes());
+        bytes.extend_from_slice(&(-2.5f64).to_le_bytes());
+        let mock = MockClient::new().expect_response(Response::ReadU8s(bytes));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_f64s("D100", 2).await;
+
+        assert_eq!(result.unwrap(), vec![1.5, -2.5]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_read_bools() {
+        let mock = MockClient::new().expect_response(Response::ReadBits(vec![true, false, true]));
+        let mut ctx = Context::new(mock);
+
+        let result = ctx.read_bools("M10", 3).await;
+
+        assert_eq!(result.unwrap(), vec![true, false, true]);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_u8s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let data = vec![0x12, 0x34];
+
+        let result = ctx.write_u8s("D100", &data).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &data);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_u16s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![0x1234u16, 0x5678u16];
+        let expected = vec![0x34, 0x12, 0x78, 0x56];
+
+        let result = ctx.write_u16s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_i16s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![-2i16, 42i16];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&(-2i16).to_le_bytes());
+        expected.extend_from_slice(&(42i16).to_le_bytes());
+
+        let result = ctx.write_i16s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_u32s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![0x12345678u32, 0x90ABCDEFu32];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&0x12345678u32.to_le_bytes());
+        expected.extend_from_slice(&0x90ABCDEFu32.to_le_bytes());
+
+        let result = ctx.write_u32s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_i32s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![-2i32, 42i32];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&(-2i32).to_le_bytes());
+        expected.extend_from_slice(&(42i32).to_le_bytes());
+
+        let result = ctx.write_i32s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_f32s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![1.5f32, -2.5f32];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&1.5f32.to_le_bytes());
+        expected.extend_from_slice(&(-2.5f32).to_le_bytes());
+
+        let result = ctx.write_f32s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_u64s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![0x1122334455667788u64, 0x99AABBCCDDEEFF00u64];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&0x1122334455667788u64.to_le_bytes());
+        expected.extend_from_slice(&0x99AABBCCDDEEFF00u64.to_le_bytes());
+
+        let result = ctx.write_u64s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_i64s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![-2i64, 42i64];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&(-2i64).to_le_bytes());
+        expected.extend_from_slice(&(42i64).to_le_bytes());
+
+        let result = ctx.write_i64s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_f64s() {
+        let mock = MockClient::new().expect_response(Response::WriteU8s());
+        let mut ctx = Context::new(mock);
+        let values = vec![1.5f64, -2.5f64];
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&1.5f64.to_le_bytes());
+        expected.extend_from_slice(&(-2.5f64).to_le_bytes());
+
+        let result = ctx.write_f64s("D100", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_u8s_request(&ctx, "D100", &expected);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_write_bools() {
+        let mock = MockClient::new().expect_response(Response::WriteBits());
+        let mut ctx = Context::new(mock);
+        let values = vec![true, false, true];
+
+        let result = ctx.write_bools("M10", &values).await;
+
+        assert!(result.is_ok());
+        assert_write_bits_request(&ctx, "M10", &values);
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_process_address_mitsubishi() {
+        let mock = MockClient::new().expect_response(Response::ReadU8s(vec![0x00, 0x00]));
+        let mut ctx = Context::new(mock);
+        ctx.set_plc_model(Model::Mitsubishi);
+
+        let result = ctx.read_u16s("D100", 1).await;
+
+        assert!(result.is_ok());
+        let request = ctx.client.requests().first().expect("missing request");
+        match request {
+            Request::ReadU8s(addr, _) => assert_eq!(addr.as_ref(), "D100"),
+            other => panic!("expected ReadU8s request, got {other:?}"),
+        }
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_process_address_keyence() {
+        let mock = MockClient::new().expect_response(Response::ReadU8s(vec![0x00, 0x00]));
+        let mut ctx = Context::new(mock);
+        ctx.set_plc_model(Model::Keyence);
+
+        let result = ctx.read_u16s("DM100", 1).await;
+
+        assert!(result.is_ok());
+        let request = ctx.client.requests().first().expect("missing request");
+        match request {
+            Request::ReadU8s(addr, _) => assert_eq!(addr.as_ref(), "D100"),
+            other => panic!("expected ReadU8s request, got {other:?}"),
+        }
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_set_plc_model() {
+        let mock = MockClient::new().expect_response(Response::ReadU8s(vec![0x00, 0x00]));
+        let mut ctx = Context::new(mock);
+
+        ctx.set_plc_model(Model::Keyence);
+        assert!(matches!(ctx.model, Model::Keyence));
+        ctx.set_plc_model(Model::Mitsubishi);
+        assert!(matches!(ctx.model, Model::Mitsubishi));
+
+        let _ = ctx.read_u16s("D100", 1).await;
+        ctx.client.verify();
+    }
+
+    #[tokio::test]
+    async fn test_context_invalid_address_returns_error() {
+        let mock = MockClient::new();
+        let mut ctx = Context::new(mock);
+        ctx.set_plc_model(Model::Keyence);
+
+        let result = ctx.read_u16s("INVALID", 1).await;
+
+        match result {
+            Err(Error::KV(_)) => {}
+            other => panic!("expected KV error, got {other:?}"),
+        }
+        assert!(ctx.client.requests().is_empty());
+    }
+}

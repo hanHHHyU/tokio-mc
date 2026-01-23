@@ -213,6 +213,12 @@ mod tests {
 
     use crate::server::service::Service;
 
+    fn encode_request(request: Request<'_>) -> Vec<u8> {
+        let frames = crate::codec::ClientEncoder::encode(request).expect("encode request");
+        assert_eq!(frames.len(), 1, "expected a single request frame");
+        frames[0].to_vec()
+    }
+
     #[derive(Clone)]
     struct DummyService {
         response: Response,
@@ -250,6 +256,14 @@ mod tests {
                     log::debug!("Writing {} bytes", data.len());
                     Response::WriteU8s()
                 }
+                Request::ReadBits(_, qty) => {
+                    // 模拟读取bits操作，返回指定数量的测试数据
+                    Response::ReadBits(vec![false; qty as usize])
+                }
+                Request::WriteBits(_, _) => {
+                    // 模拟写bits操作成功
+                    Response::WriteBits()
+                }
             };
             future::ready(Ok(response))
         }
@@ -278,13 +292,7 @@ mod tests {
         let framed = Framed::new(server, ServerCodec::default());
 
         // 使用正确的MC协议格式
-        let bytes = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0E, 0x00, // 头部
-            0x10, 0x00, 0x01, 0x14, 0x00, 0x00, // 写U8s命令
-            0x00, 0x00, 0x00, // D0地址
-            0xA8, 0x02, 0x00, // 数量2
-            0x58, 0x1B, // 要写入的数据
-        ];
+        let bytes = encode_request(Request::WriteU8s("D0".into(), vec![0x58, 0x1B].into()));
 
         client.write_all(&bytes).await.unwrap();
         client.shutdown().await.unwrap();
@@ -303,20 +311,10 @@ mod tests {
         let framed = Framed::new(server, ServerCodec::default());
 
         // 第一个读请求
-        let read_request1 = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0C, 0x00, // 头部
-            0x10, 0x00, 0x01, 0x04, 0x00, 0x00, // 读U8s命令
-            0x44, 0x30, 0x00, 0x00, // D0地址
-            0x02, 0x00, // 数量2
-        ];
+        let read_request1 = encode_request(Request::ReadU8s("D0".into(), 2));
 
         // 第二个读请求
-        let read_request2 = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0C, 0x00, // 头部
-            0x10, 0x00, 0x01, 0x04, 0x00, 0x00, // 读U8s命令
-            0x44, 0x31, 0x00, 0x00, // D1地址
-            0x04, 0x00, // 数量4
-        ];
+        let read_request2 = encode_request(Request::ReadU8s("D1".into(), 4));
 
         let service = EchoService;
 
@@ -353,13 +351,7 @@ mod tests {
         let framed = Framed::new(server, ServerCodec::default());
 
         // 写请求数据
-        let write_request = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0E, 0x00, // 头部
-            0x10, 0x00, 0x01, 0x14, 0x00, 0x00, // 写U8s命令
-            0x44, 0x30, 0x00, 0x00, // D0地址
-            0x02, 0x00, // 数量2
-            0xAA, 0xBB, // 要写入的数据
-        ];
+        let write_request = encode_request(Request::WriteU8s("D0".into(), vec![0xAA, 0xBB].into()));
 
         let service = EchoService;
 
@@ -393,10 +385,10 @@ mod tests {
         let process_task = tokio::spawn(async move { process(framed, service).await });
 
         // 1. 先发送写请求
-        let write_request = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0E, 0x00, 0x10, 0x00, 0x01, 0x14, 0x00,
-            0x00, 0x44, 0x30, 0x00, 0x00, 0x03, 0x00, 0x11, 0x22, 0x33,
-        ];
+        let write_request = encode_request(Request::WriteU8s(
+            "D0".into(),
+            vec![0x11, 0x22, 0x33].into(),
+        ));
 
         client.write_all(&write_request).await.unwrap();
 
@@ -406,10 +398,7 @@ mod tests {
         assert!(n > 0, "Should receive write response");
 
         // 2. 然后发送读请求
-        let read_request = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0C, 0x00, 0x10, 0x00, 0x01, 0x04, 0x00,
-            0x00, 0x44, 0x30, 0x00, 0x00, 0x03, 0x00,
-        ];
+        let read_request = encode_request(Request::ReadU8s("D0".into(), 3));
 
         client.write_all(&read_request).await.unwrap();
 
@@ -438,10 +427,7 @@ mod tests {
         let process_task = tokio::spawn(async move { process(framed, service).await });
 
         // 发送一个请求，服务会返回错误
-        let request = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0C, 0x00, 0x10, 0x00, 0x01, 0x04, 0x00,
-            0x00, 0x44, 0x30, 0x00, 0x00, 0x01, 0x00,
-        ];
+        let request = encode_request(Request::ReadU8s("D0".into(), 1));
 
         client.write_all(&request).await.unwrap();
 
@@ -495,10 +481,7 @@ mod tests {
         let mut stream = TcpStream::connect(addr).await.unwrap();
 
         // 发送读请求
-        let read_request = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x0C, 0x00, 0x10, 0x00, 0x01, 0x04, 0x00,
-            0x00, 0x44, 0x30, 0x00, 0x00, 0x05, 0x00, // 请求5个字节
-        ];
+        let read_request = encode_request(Request::ReadU8s("D0".into(), 5));
 
         stream.write_all(&read_request).await.unwrap();
 
@@ -525,7 +508,7 @@ mod tests {
 
         // 发送无效的请求数据（头部正确但payload无效）
         let invalid_request = [
-            0xD0, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x04, 0x00, // 头部
+            0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x04, 0x00, // 头部
             0x99, 0x99, 0xFF, 0xFF, // 无效的命令数据
         ];
 

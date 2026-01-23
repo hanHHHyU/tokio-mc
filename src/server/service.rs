@@ -80,6 +80,14 @@ mod tests {
                     registers.insert(addr.parse::<u16>().unwrap_or(0), value);
                     Ok(Response::WriteU8s())
                 }
+                Request::ReadBits(_, qty) => {
+                    // 测试用：返回指定数量的 false
+                    Ok(Response::ReadBits(vec![false; qty as usize]))
+                }
+                Request::WriteBits(_, _) => {
+                    // 测试用：写入成功
+                    Ok(Response::WriteBits())
+                }
             };
             future::ready(res)
         }
